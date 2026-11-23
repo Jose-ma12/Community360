@@ -1,0 +1,19 @@
+# ── Secretos y credenciales ──────────────────────────────────────
+.env
+firebase_credentials.json
+
+# ── Entornos virtuales ───────────────────────────────────────────
+.venv/
+venv/
+
+# ── Python cache ─────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# ── macOS ────────────────────────────────────────────────────────
+.DS_Store
+
+# ── Datos procesados (generados automáticamente) ─────────────────
+datos_depurados/

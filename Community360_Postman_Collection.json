@@ -1,0 +1,116 @@
+{
+  "info": {
+    "name": "Community360 API",
+    "_postman_id": "b8f7d8d2-8c40-4bb4-a0db-0b7f2f0f2b01",
+    "description": "Colección Postman v2.1 para Community360 (Fases 3-6). Usa {{base_url}} y {{jwt_token}}.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://127.0.0.1:8000" },
+    { "key": "jwt_token", "value": "" },
+    { "key": "id_interaccion_test", "value": "I9001" }
+  ],
+  "item": [
+    {
+      "name": "1) Login JWT",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+              "const json = pm.response.json();",
+              "pm.test('Token presente', function () { pm.expect(json.access_token).to.be.a('string').and.not.empty; });",
+              "pm.collectionVariables.set('jwt_token', json.access_token);",
+              "pm.test('jwt_token guardado', function () { pm.expect(pm.collectionVariables.get('jwt_token')).to.eql(json.access_token); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"admin_c360\",\n  \"password\": \"Community360#2026\"\n}"
+        },
+        "url": { "raw": "{{base_url}}/api/auth/login", "host": ["{{base_url}}"], "path": ["api", "auth", "login"] }
+      }
+    },
+    {
+      "name": "2) GET Históricos Dashboard (D1)",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
+        "url": { "raw": "{{base_url}}/api/historico/dashboard", "host": ["{{base_url}}"], "path": ["api", "historico", "dashboard"] }
+      }
+    },
+    {
+      "name": "3) POST Nueva interacción válida",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id_interaccion\": \"{{id_interaccion_test}}\",\n  \"id_usuario\": \"U000001\",\n  \"timestamp\": \"2026-11-23T20:15:00Z\",\n  \"canal\": \"Telegram\",\n  \"tipo\": \"mensaje\",\n  \"texto\": \"Prueba de integración Community360 desde Postman\",\n  \"tema\": \"Tecnología\",\n  \"sentimiento\": 0.85,\n  \"idioma\": \"es\",\n  \"dispositivo\": \"desktop\",\n  \"reacciones_recibidas\": 3,\n  \"etiquetas\": [\"prueba\", \"postman\"]\n}"
+        },
+        "url": { "raw": "{{base_url}}/api/interacciones", "host": ["{{base_url}}"], "path": ["api", "interacciones"] }
+      }
+    },
+    {
+      "name": "4) PUT Modificar interacción",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"texto\": \"Interacción actualizada desde Postman (PUT)\",\n  \"sentimiento\": 0.92,\n  \"reacciones_recibidas\": 5,\n  \"etiquetas\": [\"prueba\", \"postman\", \"actualizado\"]\n}"
+        },
+        "url": { "raw": "{{base_url}}/api/interacciones/{{id_interaccion_test}}", "host": ["{{base_url}}"], "path": ["api", "interacciones", "{{id_interaccion_test}}"] }
+      }
+    },
+    {
+      "name": "5) DELETE Eliminar interacción",
+      "request": {
+        "method": "DELETE",
+        "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
+        "url": { "raw": "{{base_url}}/api/interacciones/{{id_interaccion_test}}", "host": ["{{base_url}}"], "path": ["api", "interacciones", "{{id_interaccion_test}}"] }
+      }
+    },
+    {
+      "name": "6) POST Error 400 (id_usuario inexistente)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 400', function () { pm.response.to.have.status(400); });",
+              "const json = pm.response.json();",
+              "pm.test('Detalle de error presente', function () { pm.expect(json.detail).to.be.a('string'); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id_interaccion\": \"I9002\",\n  \"id_usuario\": \"U999999\",\n  \"timestamp\": \"2026-11-23T20:20:00Z\",\n  \"canal\": \"Discord\",\n  \"tipo\": \"mensaje\",\n  \"texto\": \"Debe fallar por integridad referencial\",\n  \"tema\": \"Prueba\",\n  \"sentimiento\": 0.1,\n  \"idioma\": \"es\",\n  \"dispositivo\": \"mobile\",\n  \"reacciones_recibidas\": 0,\n  \"etiquetas\": [\"error\", \"fk\"]\n}"
+        },
+        "url": { "raw": "{{base_url}}/api/interacciones", "host": ["{{base_url}}"], "path": ["api", "interacciones"] }
+      }
+    }
+  ]
+}

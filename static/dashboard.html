@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Community360 | Dashboard</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <div class="brand">
+        <div class="brand-mark">C360</div>
+        <div>
+          <h1>Community360 Dashboard</h1>
+          <p id="userInfo">Monitoreo en tiempo real e históricos</p>
+        </div>
+      </div>
+      <div class="actions">
+        <div class="status-pill" title="Estado de WebSocket">
+          <span id="wsDot" class="dot"></span>
+          <span id="wsStatus">WS: desconectado</span>
+        </div>
+        <button id="logoutBtn" class="btn btn-ghost">Cerrar sesión</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="section" id="seccion-tiempo-real">
+      <div class="section-header">
+        <div>
+          <h2>Sección A — Tiempo real (WebSockets + Firestore)</h2>
+          <p>Actualización automática ante eventos POST/PUT/DELETE realizados desde Postman.</p>
+        </div>
+        <div class="muted" id="ultimaActualizacion">Última actualización: —</div>
+      </div>
+
+      <div class="grid grid-kpi">
+        <article class="card kpi">
+          <div class="label">Total de interacciones</div>
+          <div class="value" id="kpiTotal">0</div>
+          <div class="formula">N</div>
+        </article>
+        <article class="card kpi">
+          <div class="label">Sentimiento promedio</div>
+          <div class="value" id="kpiSentimiento">0</div>
+          <div class="formula">S̄ = (1/N) · Σ s<sub>i</sub></div>
+        </article>
+        <article class="card kpi">
+          <div class="label">Reacciones promedio</div>
+          <div class="value" id="kpiReacciones">0</div>
+          <div class="formula">R̄ = (1/N) · Σ r<sub>i</sub></div>
+        </article>
+        <article class="card kpi">
+          <div class="label">Longitud media de texto</div>
+          <div class="value" id="kpiLongitud">0</div>
+          <div class="formula">L̄ = (1/N<sub>txt</sub>) · Σ len(texto<sub>i</sub>), excluyendo reacciones</div>
+        </article>
+      </div>
+
+      <div class="grid grid-2" style="margin-top:16px;">
+        <article class="card">
+          <h3>Interacciones por canal</h3>
+          <div class="chart-wrap"><canvas id="chartCanal"></canvas></div>
+        </article>
+        <article class="card">
+          <h3>Interacciones por tema</h3>
+          <div class="chart-wrap"><canvas id="chartTema"></canvas></div>
+        </article>
+      </div>
+
+      <div class="grid grid-2" style="margin-top:16px;">
+        <article class="card">
+          <h3>Mapa de calor de actividad (UTC)</h3>
+          <p class="muted" style="margin-top:-4px;">Filas: Lun–Dom · Columnas: bloques de 4 horas UTC</p>
+          <div class="heatmap" id="heatmapContainer"></div>
+        </article>
+        <article class="card">
+          <h3>Bitácora en vivo de eventos WebSocket</h3>
+          <div class="log" id="wsLog"><div class="empty">Sin eventos aún.</div></div>
+        </article>
+      </div>
+
+      <article class="card" style="margin-top:16px;">
+        <h3>Últimas interacciones (solo lectura)</h3>
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr>
+                <th>ID</th><th>Usuario</th><th>Timestamp (UTC)</th><th>Canal</th><th>Tipo</th><th>Tema</th><th>Sent.</th><th>Reac.</th><th>Texto</th>
+              </tr>
+            </thead>
+            <tbody id="tablaInteracciones">
+              <tr><td colspan="9" class="empty">Cargando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <section class="section" id="seccion-historicos">
+      <div class="section-header">
+        <div>
+          <h2>Sección B — Históricos (Cloudflare D1 vía REST)</h2>
+          <p>Datos agregados consultados directamente desde D1, sin datos simulados.</p>
+        </div>
+      </div>
+
+      <div class="grid grid-kpi">
+        <article class="card kpi"><div class="label">Miembros registrados</div><div class="value" id="hTotalUsuarios">—</div><div class="formula">Tabla: usuarios</div></article>
+        <article class="card kpi"><div class="label">Ubicación autorizada</div><div class="value" id="hConConsent">—</div><div class="formula">consentimiento_datos = 1</div></article>
+        <article class="card kpi"><div class="label">Excluidos por privacidad</div><div class="value" id="hSinConsent">—</div><div class="formula">consentimiento_datos = 0</div></article>
+        <article class="card kpi"><div class="label">Interacciones en cuarentena</div><div class="value" id="hCuarentena">—</div><div class="formula">Tabla: interacciones_cuarentena</div></article>
+      </div>
+
+      <div class="banner" id="bannerPrivacidad">Verificación de privacidad: top ciudades calculado con INNER JOIN usuarios_ubicacion + usuarios WHERE consentimiento_datos = 1 (regla sin_datos_geo).</div>
+
+      <div class="grid grid-3">
+        <article class="card">
+          <h3>Plataforma principal</h3>
+          <div class="chart-wrap"><canvas id="chartPlataforma"></canvas></div>
+        </article>
+        <article class="card">
+          <h3>Riesgo de abandono</h3>
+          <div class="chart-wrap"><canvas id="chartRiesgo"></canvas></div>
+        </article>
+        <article class="card">
+          <h3>Top ciudades autorizadas</h3>
+          <div class="chart-wrap"><canvas id="chartCiudades"></canvas></div>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
