@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="es">
 <head>
-  <meta charset="utf-8">
+  <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Community360 | Dashboard</title>
   <link rel="stylesheet" href="/static/styles.css">
@@ -41,22 +41,22 @@
         <article class="card kpi">
           <div class="label">Total de interacciones</div>
           <div class="value" id="kpiTotal">0</div>
-          <div class="formula">N</div>
+          <div class="formula">N = total de interacciones activas</div>
         </article>
         <article class="card kpi">
           <div class="label">Sentimiento promedio</div>
           <div class="value" id="kpiSentimiento">0</div>
-          <div class="formula">S̄ = (1/N) · Σ s<sub>i</sub></div>
+          <div class="formula">S̄ = (1 / N) · Σ sᵢ  (rango -1 a 1)</div>
         </article>
         <article class="card kpi">
           <div class="label">Reacciones promedio</div>
           <div class="value" id="kpiReacciones">0</div>
-          <div class="formula">R̄ = (1/N) · Σ r<sub>i</sub></div>
+          <div class="formula">R̄ = (1 / N) · Σ rᵢ</div>
         </article>
         <article class="card kpi">
           <div class="label">Longitud media de texto</div>
           <div class="value" id="kpiLongitud">0</div>
-          <div class="formula">L̄ = (1/N<sub>txt</sub>) · Σ len(texto<sub>i</sub>), excluyendo reacciones</div>
+          <div class="formula">L̄ = (1 / N_texto) · Σ longitud(textoᵢ)</div>
         </article>
       </div>
 
