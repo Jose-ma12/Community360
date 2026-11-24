@@ -13,7 +13,7 @@
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600&amp;family=JetBrains+Mono:wght@500;600&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/styles.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -57,22 +57,34 @@
         <article class="card kpi kpi-card">
           <div class="label">Total de interacciones</div>
           <div class="value" id="kpiTotal">0</div>
-          <div class="formula">Registros activos en Firestore</div>
+          <details class="formula">
+            <summary>Registros activos en Firestore</summary>
+            <p>N = count(i in Firestore if i.activa)</p>
+          </details>
         </article>
         <article class="card kpi kpi-card">
           <div class="label">Sentimiento promedio</div>
           <div class="value" id="kpiSentimiento">0</div>
-          <div class="formula">Promedio aritmético (rango -1 a 1)</div>
+          <details class="formula">
+            <summary>Promedio aritmético (rango -1 a 1)</summary>
+            <p>S_prom = (1/N) * sum(sentimiento_i)</p>
+          </details>
         </article>
         <article class="card kpi kpi-card">
           <div class="label">Reacciones promedio</div>
           <div class="value" id="kpiReacciones">0</div>
-          <div class="formula">Promedio de reacciones por interacción</div>
+          <details class="formula">
+            <summary>Promedio de reacciones por interacción</summary>
+            <p>R_prom = (1/N) * sum(reacciones_i)</p>
+          </details>
         </article>
         <article class="card kpi kpi-card">
           <div class="label">Longitud media de texto</div>
           <div class="value" id="kpiLongitud">0</div>
-          <div class="formula">Caracteres promedio (excluye reacciones)</div>
+          <details class="formula">
+            <summary>Caracteres promedio (excluye reacciones)</summary>
+            <p>L_prom = (1/M) * sum(len(texto_i)); M excluye reacciones</p>
+          </details>
         </article>
       </div>
 
@@ -126,10 +138,38 @@
       </div>
 
       <div class="grid grid-kpi">
-        <article class="card kpi kpi-card"><div class="label">Miembros registrados</div><div class="value" id="hTotalUsuarios">1068</div><div class="formula">Tabla: usuarios</div></article>
-        <article class="card kpi kpi-card"><div class="label">Ubicación autorizada</div><div class="value" id="hConConsent">897</div><div class="formula">consentimiento_datos = 1</div></article>
-        <article class="card kpi kpi-card"><div class="label">Excluidos por privacidad</div><div class="value" id="hSinConsent">171</div><div class="formula">consentimiento_datos = 0</div></article>
-        <article class="card kpi kpi-card"><div class="label">Interacciones en cuarentena</div><div class="value" id="hCuarentena">793</div><div class="formula">Tabla: interacciones_cuarentena</div></article>
+        <article class="card kpi kpi-card">
+          <div class="label">Miembros registrados</div>
+          <div class="value" id="hTotalUsuarios">1068</div>
+          <details class="formula">
+            <summary>Tabla: usuarios</summary>
+            <p>U = count(u in usuarios)</p>
+          </details>
+        </article>
+        <article class="card kpi kpi-card">
+          <div class="label">Ubicación autorizada</div>
+          <div class="value" id="hConConsent">897</div>
+          <details class="formula">
+            <summary>consentimiento_datos = 1</summary>
+            <p>U_geo = count(u in usuarios where consentimiento_datos = 1)</p>
+          </details>
+        </article>
+        <article class="card kpi kpi-card">
+          <div class="label">Excluidos por privacidad</div>
+          <div class="value" id="hSinConsent">171</div>
+          <details class="formula">
+            <summary>consentimiento_datos = 0</summary>
+            <p>U_priv = count(u in usuarios where consentimiento_datos = 0)</p>
+          </details>
+        </article>
+        <article class="card kpi kpi-card">
+          <div class="label">Interacciones en cuarentena</div>
+          <div class="value" id="hCuarentena">793</div>
+          <details class="formula">
+            <summary>Tabla: interacciones_cuarentena</summary>
+            <p>Q = count(i in interacciones_cuarentena)</p>
+          </details>
+        </article>
       </div>
 
       <div class="banner" id="bannerPrivacidad">Verificación de privacidad: top ciudades calculado con INNER JOIN usuarios_ubicacion + usuarios WHERE consentimiento_datos = 1 (regla sin_datos_geo).</div>

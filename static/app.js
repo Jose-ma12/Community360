@@ -179,12 +179,12 @@
     return charts[id];
   }
 
-  const palette = ['#6366F1', '#06B6D4', '#10B981', '#F59E0B', '#EC4899', '#8B5CF6', '#3B82F6', '#14B8A6'];
-  let chartGridColor = 'rgba(148, 163, 184, 0.12)';
+  const palette = ['#E5C158', '#3B82F6', '#10B981', '#8B5CF6', '#F43F5E', '#0EA5E9', '#D97706', '#14B8A6'];
+  let chartGridColor = 'rgba(255, 255, 255, 0.07)';
   let chartTickColor = '#94A3B8';
   const chartTooltip = {
-    backgroundColor: '#0F172A',
-    borderColor: 'rgba(148, 163, 184, 0.28)',
+    backgroundColor: '#0D111C',
+    borderColor: 'rgba(229, 193, 88, 0.28)',
     borderWidth: 1,
     titleColor: '#F8FAFC',
     bodyColor: '#F8FAFC',
@@ -199,7 +199,7 @@
     const canalValues = canalLabels.map(k => metricas.por_canal[k]);
     ensureChart('chartCanal', {
       type: 'bar',
-      data: { labels: canalLabels, datasets: [{ label: 'Interacciones', data: canalValues, backgroundColor: '#6366F1', borderColor: '#06B6D4', borderWidth: 1, borderRadius: 8 }] },
+      data: { labels: canalLabels, datasets: [{ label: 'Interacciones', data: canalValues, backgroundColor: '#E5C158', borderColor: '#3B82F6', borderWidth: 1, borderRadius: 6 }] },
       options: {
         responsive: true,
         maintainAspectRatio: false,
@@ -222,7 +222,7 @@
           backgroundColor: temaLabels.map((_, i) => palette[i % palette.length]),
           borderColor: cssVar('--bg-card'),
           borderWidth: 1,
-          hoverBorderColor: '#06B6D4',
+          hoverBorderColor: '#E5C158',
           hoverOffset: 4
         }]
       },
@@ -246,7 +246,7 @@
       bloques.forEach(b => {
         const v = Number(heatmap?.[d]?.[b] || 0);
         const ratio = max ? v / max : 0;
-        const bg = `rgba(31,111,235,${0.08 + ratio * 0.82})`;
+        const bg = `rgba(59,130,246,${0.08 + ratio * 0.82})`;
         const color = ratio > 0.55 ? '#fff' : 'var(--text-primary)';
         html += `<td class="cell" style="background:${bg};color:${color}">${v}</td>`;
       });
@@ -383,7 +383,7 @@
     const plat = data.por_plataforma_principal || [];
     ensureChart('chartPlataforma', {
       type: 'bar',
-      data: { labels: plat.map(x => x.plataforma_principal || 'N/D'), datasets: [{ label: 'Usuarios', data: plat.map(x => x.total), backgroundColor: '#10B981', borderColor: '#14B8A6', borderWidth: 1, borderRadius: 8 }] },
+      data: { labels: plat.map(x => x.plataforma_principal || 'N/D'), datasets: [{ label: 'Usuarios', data: plat.map(x => x.total), backgroundColor: '#10B981', borderColor: '#059669', borderWidth: 1, borderRadius: 6 }] },
       options: {
         indexAxis: 'y',
         responsive: true,
@@ -404,10 +404,10 @@
         labels: riesgoLabels,
         datasets: [{
           data: riesgoLabels.map(l => riesgo[l] || 0),
-          backgroundColor: ['#F59E0B', '#EC4899', '#10B981'],
+          backgroundColor: ['#D97706', '#F43F5E', '#10B981'],
           borderColor: cssVar('--bg-card'),
           borderWidth: 1,
-          hoverBorderColor: '#06B6D4',
+          hoverBorderColor: '#E5C158',
           hoverOffset: 4
         }]
       },
@@ -424,7 +424,7 @@
       type: 'bar',
       data: {
         labels: ciudades.map(c => `${c.ciudad || 'N/D'}${c.estado ? ', ' + c.estado : ''}`),
-        datasets: [{ label: 'Usuarios', data: ciudades.map(c => c.total), backgroundColor: '#3B82F6', borderColor: '#8B5CF6', borderWidth: 1, borderRadius: 8 }]
+        datasets: [{ label: 'Usuarios', data: ciudades.map(c => c.total), backgroundColor: '#3B82F6', borderColor: '#8B5CF6', borderWidth: 1, borderRadius: 6 }]
       },
       options: {
         responsive: true,
