@@ -42,11 +42,9 @@
   async function verifySession() {
     try {
       const resp = await apiFetch('/api/auth/verify');
-      if (!resp.ok) throw new Error('Sesión inválida');
-    } catch {
-      sessionStorage.removeItem('c360_token');
-      sessionStorage.removeItem('c360_user');
-      window.location.href = '/static/login.html';
+      if (!resp.ok) console.warn(`Verificación de sesión: HTTP ${resp.status}`);
+    } catch (err) {
+      console.error('No se pudo verificar la sesión', err);
     }
   }
 
@@ -103,6 +101,10 @@
   function ensureChart(id, config) {
     const ctx = $(id);
     if (!ctx) return null;
+    if (typeof Chart === 'undefined') {
+      console.error('Chart.js no está disponible; no se pueden dibujar las gráficas.');
+      return null;
+    }
     if (charts[id]) {
       charts[id].data = config.data;
       charts[id].options = config.options;
@@ -185,9 +187,13 @@
   function applyMetricas(metricas) {
     if (!metricas) return;
     updateKpis(metricas);
-    updateRealtimeCharts(metricas);
-    renderHeatmap(metricas.heatmap_actividad || {});
-    renderUltimas(metricas.ultimas_interacciones || []);
+    try {
+      updateRealtimeCharts(metricas);
+      renderHeatmap(metricas.heatmap_actividad || {});
+      renderUltimas(metricas.ultimas_interacciones || []);
+    } catch (err) {
+      console.error('Error al actualizar visualizaciones en tiempo real', err);
+    }
   }
 
   function connectWs() {
@@ -208,22 +214,30 @@
 
     ws.onmessage = (ev) => {
       let msg;
-      try { msg = JSON.parse(ev.data); } catch { return; }
+      try {
+        msg = JSON.parse(ev.data);
+      } catch (err) {
+        console.error('Mensaje WebSocket no válido', err);
+        return;
+      }
       if (msg.type === 'pong') return;
-      if (msg.metricas) applyMetricas(msg.metricas);
+      if (msg.error) console.error(msg.error);
+      if (msg.metricas && !msg.error) applyMetricas(msg.metricas);
       if (['snapshot_inicial', 'interaccion_creada', 'interaccion_actualizada', 'interaccion_eliminada', 'conexion'].includes(msg.type || msg.evento)) {
         logWsEvent(msg);
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (ev) => {
       setWsStatus(false, 'WS: desconectado');
+      console.warn(`WebSocket cerrado (código ${ev.code})${ev.reason ? `: ${ev.reason}` : ''}`);
       if (wsPingTimer) { clearInterval(wsPingTimer); wsPingTimer = null; }
       if (!manualLogout) scheduleReconnect();
     };
 
     ws.onerror = () => {
       setWsStatus(false, 'WS: error');
+      console.error('Error de conexión WebSocket', wsUrl);
     };
   }
 
@@ -235,10 +249,13 @@
   async function loadHistoricos() {
     try {
       const resp = await apiFetch('/api/historico/dashboard');
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
+      if (data.error_firestore) console.error(data.error_firestore);
       renderHistoricos(data);
+      if (data.metricas_firestore && !data.error_firestore) applyMetricas(data.metricas_firestore);
     } catch (err) {
-      console.error('Error históricos', err);
+      console.error('Error al cargar los históricos', err);
     }
   }
 
@@ -279,9 +296,9 @@
   }
 
   async function init() {
+    connectWs();
     await verifySession();
     await loadHistoricos();
-    connectWs();
   }
 
   init();

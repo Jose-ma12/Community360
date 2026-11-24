@@ -1,5 +1,6 @@
 import asyncio
 import json
+import math
 import os
 import re
 from datetime import datetime, timedelta, timezone
@@ -60,7 +61,7 @@ class GestorWebSockets:
                 self.activos.remove(websocket)
 
     async def broadcast(self, mensaje: dict):
-        data = json.dumps(mensaje, ensure_ascii=False, default=str)
+        data = json.dumps(sanitizar_json(mensaje), ensure_ascii=False, default=str, allow_nan=False)
         async with self.lock:
             activos = list(self.activos)
         stale = []
@@ -290,6 +291,9 @@ async def obtener_usuario_actual(credentials: HTTPAuthorizationCredentials | Non
 def _normalizar_interaccion_doc(doc: dict) -> dict:
     data = dict(doc)
     data["etiquetas"] = data.get("etiquetas") or []
+    for clave, valor in list(data.items()):
+        if isinstance(valor, float) and not math.isfinite(valor):
+            data[clave] = None
     return data
 
 
@@ -297,6 +301,31 @@ def _calcular_longitud_texto(tipo: str, texto: str | None) -> int:
     if tipo == "reaccion":
         return 0
     return len(texto or "")
+
+
+def metricas_vacias() -> dict:
+    return {
+        "total_interacciones": 0,
+        "sentimiento_promedio": 0.0,
+        "reacciones_promedio": 0.0,
+        "longitud_media_texto": 0.0,
+        "total_textos": 0,
+        "por_canal": {c: 0 for c in CANALES_VALIDOS},
+        "por_tema": {},
+        "heatmap_actividad": {dia: {bloque: 0 for bloque in BLOQUES_HEATMAP} for dia in DIAS_HEATMAP},
+        "ultimas_interacciones": [],
+        "ultima_actualizacion": utc_now_iso(),
+    }
+
+
+def sanitizar_json(valor: Any) -> Any:
+    if isinstance(valor, float):
+        return valor if math.isfinite(valor) else None
+    if isinstance(valor, dict):
+        return {clave: sanitizar_json(item) for clave, item in valor.items()}
+    if isinstance(valor, (list, tuple)):
+        return [sanitizar_json(item) for item in valor]
+    return valor
 
 
 def recalcular_metricas_dinamicas(guardar_en_firestore: bool = True) -> dict:
@@ -370,6 +399,7 @@ def recalcular_metricas_dinamicas(guardar_en_firestore: bool = True) -> dict:
         },
     }
 
+    metricas = sanitizar_json(metricas)
     if guardar_en_firestore:
         db.collection("metricas_tiempo_real").document("resumen_global").set(metricas)
     return metricas
@@ -597,6 +627,14 @@ async def historico_dashboard(usuario=Depends(obtener_usuario_actual)):
     for r in riesgo_rows:
         riesgo[r["categoria"]] = r["total"]
 
+    error_firestore = None
+    try:
+        metricas_firestore = recalcular_metricas_dinamicas(guardar_en_firestore=False)
+    except Exception as exc:
+        error_firestore = f"No se pudieron leer las métricas de Firestore: {exc}"
+        print(error_firestore)
+        metricas_firestore = metricas_vacias()
+
     return {
         "resumen_usuarios": {
             "total_usuarios": total_usuarios,
@@ -610,6 +648,9 @@ async def historico_dashboard(usuario=Depends(obtener_usuario_actual)):
         "por_rango_edad": por_rango_edad,
         "top_ciudades_autorizadas": top_ciudades,
         "riesgo_abandono": riesgo,
+        "total_interacciones": metricas_firestore["total_interacciones"],
+        "metricas_firestore": metricas_firestore,
+        "error_firestore": error_firestore,
         "privacidad": {
             "regla": "sin_datos_geo",
             "filtro_top_ciudades": "INNER JOIN usuarios_ubicacion uu ON u.id_usuario = uu.id_usuario WHERE u.consentimiento_datos = 1",
@@ -633,13 +674,20 @@ async def websocket_endpoint(websocket: WebSocket, token: str | None = Query(def
 
     await gestor_ws.conectar(websocket)
     try:
-        metricas = recalcular_metricas_dinamicas(guardar_en_firestore=False)
-        await websocket.send_text(json.dumps({
+        error_metricas = None
+        try:
+            metricas = recalcular_metricas_dinamicas(guardar_en_firestore=False)
+        except Exception as exc:
+            error_metricas = f"No se pudieron calcular las métricas iniciales: {exc}"
+            print(error_metricas)
+            metricas = metricas_vacias()
+        await websocket.send_text(json.dumps(sanitizar_json({
             "type": "snapshot_inicial",
             "evento": "snapshot_inicial",
             "timestamp_utc": utc_now_iso(),
             "metricas": metricas,
-        }, ensure_ascii=False, default=str))
+            "error": error_metricas,
+        }), ensure_ascii=False, default=str, allow_nan=False))
         while True:
             msg = await websocket.receive_text()
             try:
