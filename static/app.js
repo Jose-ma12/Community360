@@ -115,16 +115,16 @@
     return charts[id];
   }
 
-  const palette = ['#3b82f6', '#64748b', '#475569', '#94a3b8', '#334155', '#1e293b'];
-  const chartGridColor = 'rgba(255, 255, 255, 0.05)';
-  const chartTickColor = '#64748b';
+  const palette = ['#C8A96E', '#5B7C99', '#5C8A78', '#8C857B', '#3D5266', '#6E737D'];
+  const chartGridColor = 'rgba(242, 239, 233, 0.06)';
+  const chartTickColor = '#9A9890';
   const chartTooltip = {
-    backgroundColor: '#111114',
-    borderColor: '#27272a',
+    backgroundColor: '#13161C',
+    borderColor: '#232833',
     borderWidth: 1,
-    titleColor: '#f4f4f5',
-    bodyColor: '#a1a1aa',
-    cornerRadius: 4,
+    titleColor: '#F2EFE9',
+    bodyColor: '#F2EFE9',
+    cornerRadius: 2,
     padding: 10,
     boxPadding: 4
   };
@@ -135,7 +135,7 @@
     const canalValues = canalLabels.map(k => metricas.por_canal[k]);
     ensureChart('chartCanal', {
       type: 'bar',
-      data: { labels: canalLabels, datasets: [{ label: 'Interacciones', data: canalValues, backgroundColor: '#3b82f6', borderColor: '#334155', borderWidth: 1, borderRadius: 6 }] },
+      data: { labels: canalLabels, datasets: [{ label: 'Interacciones', data: canalValues, backgroundColor: '#C8A96E', borderColor: '#6E737D', borderWidth: 1, borderRadius: 1 }] },
       options: {
         responsive: true,
         maintainAspectRatio: false,
@@ -156,9 +156,9 @@
         datasets: [{
           data: temaValues,
           backgroundColor: temaLabels.map((_, i) => palette[i % palette.length]),
-          borderColor: '#111114',
+          borderColor: '#13161C',
           borderWidth: 1,
-          hoverBorderColor: '#94a3b8',
+          hoverBorderColor: '#C8A96E',
           hoverOffset: 4
         }]
       },
@@ -309,7 +309,7 @@
     const plat = data.por_plataforma_principal || [];
     ensureChart('chartPlataforma', {
       type: 'bar',
-      data: { labels: plat.map(x => x.plataforma_principal || 'N/D'), datasets: [{ label: 'Usuarios', data: plat.map(x => x.total), backgroundColor: '#64748b', borderColor: '#475569', borderWidth: 1, borderRadius: 6 }] },
+      data: { labels: plat.map(x => x.plataforma_principal || 'N/D'), datasets: [{ label: 'Usuarios', data: plat.map(x => x.total), backgroundColor: '#5B7C99', borderColor: '#3D5266', borderWidth: 1, borderRadius: 1 }] },
       options: {
         indexAxis: 'y',
         responsive: true,
@@ -330,10 +330,10 @@
         labels: riesgoLabels,
         datasets: [{
           data: riesgoLabels.map(l => riesgo[l] || 0),
-          backgroundColor: ['#334155', '#64748b', '#3b82f6'],
-          borderColor: '#111114',
+          backgroundColor: ['#6E737D', '#8C857B', '#5C8A78'],
+          borderColor: '#13161C',
           borderWidth: 1,
-          hoverBorderColor: '#94a3b8',
+          hoverBorderColor: '#C8A96E',
           hoverOffset: 4
         }]
       },
@@ -350,7 +350,7 @@
       type: 'bar',
       data: {
         labels: ciudades.map(c => `${c.ciudad || 'N/D'}${c.estado ? ', ' + c.estado : ''}`),
-        datasets: [{ label: 'Usuarios', data: ciudades.map(c => c.total), backgroundColor: '#475569', borderColor: '#334155', borderWidth: 1, borderRadius: 6 }]
+        datasets: [{ label: 'Usuarios', data: ciudades.map(c => c.total), backgroundColor: '#3D5266', borderColor: '#6E737D', borderWidth: 1, borderRadius: 1 }]
       },
       options: {
         responsive: true,
