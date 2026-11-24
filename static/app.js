@@ -21,6 +21,69 @@
   let wsPingTimer = null;
   let manualLogout = false;
 
+  const THEME_KEY = 'c360_theme';
+  const themeToggleBtn = $('themeToggleBtn');
+
+  function cssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  function currentTheme() {
+    return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  }
+
+  function syncThemeToggle() {
+    if (!themeToggleBtn) return;
+    const isLight = currentTheme() === 'light';
+    const label = themeToggleBtn.querySelector('.theme-label');
+    if (label) label.textContent = isLight ? 'Modo oscuro' : 'Modo claro';
+    themeToggleBtn.setAttribute('aria-label', isLight ? 'Activar modo oscuro' : 'Activar modo claro');
+    themeToggleBtn.setAttribute('aria-pressed', String(isLight));
+  }
+
+  function refreshChartThemes() {
+    chartGridColor = cssVar('--chart-grid');
+    chartTickColor = cssVar('--chart-tick');
+    chartTooltip.backgroundColor = cssVar('--chart-tooltip-bg');
+    chartTooltip.borderColor = cssVar('--chart-tooltip-border');
+    chartTooltip.titleColor = cssVar('--chart-tooltip-text');
+    chartTooltip.bodyColor = cssVar('--chart-tooltip-text');
+
+    Object.values(charts).forEach((chart) => {
+      const tooltip = chart.options?.plugins?.tooltip;
+      if (tooltip) {
+        tooltip.backgroundColor = chartTooltip.backgroundColor;
+        tooltip.borderColor = chartTooltip.borderColor;
+        tooltip.titleColor = chartTooltip.titleColor;
+        tooltip.bodyColor = chartTooltip.bodyColor;
+      }
+      Object.values(chart.options?.scales || {}).forEach((scale) => {
+        if (scale.grid) scale.grid.color = chartGridColor;
+        if (scale.border) scale.border.color = chartGridColor;
+        if (scale.ticks) scale.ticks.color = chartTickColor;
+      });
+      const legendLabels = chart.options?.plugins?.legend?.labels;
+      if (legendLabels) legendLabels.color = chartTickColor;
+      if (chart.config?.type === 'doughnut') {
+        const surface = cssVar('--bg-card');
+        chart.data.datasets.forEach((dataset) => { dataset.borderColor = surface; });
+      }
+      chart.update('none');
+    });
+  }
+
+  function setTheme(theme) {
+    const next = theme === 'light' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem(THEME_KEY, next); } catch {}
+    syncThemeToggle();
+    refreshChartThemes();
+  }
+
+  if (themeToggleBtn) {
+    themeToggleBtn.addEventListener('click', () => setTheme(currentTheme() === 'dark' ? 'light' : 'dark'));
+  }
+
   function authHeaders() {
     return { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
   }
@@ -68,6 +131,7 @@
     item.className = 'log-item';
     const ts = evt.timestamp_utc || new Date().toISOString();
     const tipo = evt.evento || evt.type || 'evento';
+    item.dataset.event = tipo;
     const actor = evt.actor ? ` · ${evt.actor}` : '';
     const detail = evt.interaccion?.id_interaccion ? ` · ${evt.interaccion.id_interaccion}` : '';
     item.innerHTML = `<div class="meta"><span>${tipo}${actor}${detail}</span><span>${ts}</span></div><div>${summarizeEvent(evt)}</div>`;
@@ -115,16 +179,16 @@
     return charts[id];
   }
 
-  const palette = ['#C8A96E', '#5B7C99', '#5C8A78', '#8C857B', '#3D5266', '#6E737D'];
-  const chartGridColor = 'rgba(242, 239, 233, 0.06)';
-  const chartTickColor = '#9A9890';
+  const palette = ['#6366F1', '#06B6D4', '#10B981', '#F59E0B', '#EC4899', '#8B5CF6', '#3B82F6', '#14B8A6'];
+  let chartGridColor = 'rgba(148, 163, 184, 0.12)';
+  let chartTickColor = '#94A3B8';
   const chartTooltip = {
-    backgroundColor: '#13161C',
-    borderColor: '#232833',
+    backgroundColor: '#0F172A',
+    borderColor: 'rgba(148, 163, 184, 0.28)',
     borderWidth: 1,
-    titleColor: '#F2EFE9',
-    bodyColor: '#F2EFE9',
-    cornerRadius: 2,
+    titleColor: '#F8FAFC',
+    bodyColor: '#F8FAFC',
+    cornerRadius: 8,
     padding: 10,
     boxPadding: 4
   };
@@ -135,7 +199,7 @@
     const canalValues = canalLabels.map(k => metricas.por_canal[k]);
     ensureChart('chartCanal', {
       type: 'bar',
-      data: { labels: canalLabels, datasets: [{ label: 'Interacciones', data: canalValues, backgroundColor: '#C8A96E', borderColor: '#6E737D', borderWidth: 1, borderRadius: 1 }] },
+      data: { labels: canalLabels, datasets: [{ label: 'Interacciones', data: canalValues, backgroundColor: '#6366F1', borderColor: '#06B6D4', borderWidth: 1, borderRadius: 8 }] },
       options: {
         responsive: true,
         maintainAspectRatio: false,
@@ -156,9 +220,9 @@
         datasets: [{
           data: temaValues,
           backgroundColor: temaLabels.map((_, i) => palette[i % palette.length]),
-          borderColor: '#13161C',
+          borderColor: cssVar('--bg-card'),
           borderWidth: 1,
-          hoverBorderColor: '#C8A96E',
+          hoverBorderColor: '#06B6D4',
           hoverOffset: 4
         }]
       },
@@ -166,7 +230,7 @@
         responsive: true,
         maintainAspectRatio: false,
         cutout: '68%',
-        plugins: { legend: { position: 'bottom', labels: { ...chartLegendLabels } }, tooltip: { ...chartTooltip } }
+        plugins: { legend: { position: 'bottom', labels: { ...chartLegendLabels, color: chartTickColor } }, tooltip: { ...chartTooltip } }
       }
     });
   }
@@ -183,7 +247,7 @@
         const v = Number(heatmap?.[d]?.[b] || 0);
         const ratio = max ? v / max : 0;
         const bg = `rgba(31,111,235,${0.08 + ratio * 0.82})`;
-        const color = ratio > 0.55 ? '#fff' : '#10284a';
+        const color = ratio > 0.55 ? '#fff' : 'var(--text-primary)';
         html += `<td class="cell" style="background:${bg};color:${color}">${v}</td>`;
       });
       html += '</tr>';
@@ -212,6 +276,16 @@
         <td>${texto}</td>
       </tr>`;
     }).join('');
+    decorateSentiment();
+  }
+
+  function decorateSentiment() {
+    document.querySelectorAll('#tablaInteracciones td:nth-child(7)').forEach((cell) => {
+      const value = Number(String(cell.textContent).trim());
+      const tone = value > 0.05 ? 'positive' : value < -0.05 ? 'negative' : 'neutral';
+      cell.dataset.sentiment = tone;
+      cell.classList.add('sentiment');
+    });
   }
 
   function escapeHtml(str) {
@@ -309,7 +383,7 @@
     const plat = data.por_plataforma_principal || [];
     ensureChart('chartPlataforma', {
       type: 'bar',
-      data: { labels: plat.map(x => x.plataforma_principal || 'N/D'), datasets: [{ label: 'Usuarios', data: plat.map(x => x.total), backgroundColor: '#5B7C99', borderColor: '#3D5266', borderWidth: 1, borderRadius: 1 }] },
+      data: { labels: plat.map(x => x.plataforma_principal || 'N/D'), datasets: [{ label: 'Usuarios', data: plat.map(x => x.total), backgroundColor: '#10B981', borderColor: '#14B8A6', borderWidth: 1, borderRadius: 8 }] },
       options: {
         indexAxis: 'y',
         responsive: true,
@@ -330,10 +404,10 @@
         labels: riesgoLabels,
         datasets: [{
           data: riesgoLabels.map(l => riesgo[l] || 0),
-          backgroundColor: ['#6E737D', '#8C857B', '#5C8A78'],
-          borderColor: '#13161C',
+          backgroundColor: ['#F59E0B', '#EC4899', '#10B981'],
+          borderColor: cssVar('--bg-card'),
           borderWidth: 1,
-          hoverBorderColor: '#C8A96E',
+          hoverBorderColor: '#06B6D4',
           hoverOffset: 4
         }]
       },
@@ -341,7 +415,7 @@
         responsive: true,
         maintainAspectRatio: false,
         cutout: '68%',
-        plugins: { legend: { position: 'bottom', labels: { ...chartLegendLabels } }, tooltip: { ...chartTooltip } }
+        plugins: { legend: { position: 'bottom', labels: { ...chartLegendLabels, color: chartTickColor } }, tooltip: { ...chartTooltip } }
       }
     });
 
@@ -350,7 +424,7 @@
       type: 'bar',
       data: {
         labels: ciudades.map(c => `${c.ciudad || 'N/D'}${c.estado ? ', ' + c.estado : ''}`),
-        datasets: [{ label: 'Usuarios', data: ciudades.map(c => c.total), backgroundColor: '#3D5266', borderColor: '#6E737D', borderWidth: 1, borderRadius: 1 }]
+        datasets: [{ label: 'Usuarios', data: ciudades.map(c => c.total), backgroundColor: '#3B82F6', borderColor: '#8B5CF6', borderWidth: 1, borderRadius: 8 }]
       },
       options: {
         responsive: true,
@@ -365,6 +439,8 @@
   }
 
   async function init() {
+    syncThemeToggle();
+    refreshChartThemes();
     connectWs();
     await verifySession();
     await loadHistoricos();

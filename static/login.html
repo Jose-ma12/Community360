@@ -4,12 +4,24 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Community360 | Iniciar sesión</title>
+  <script>
+    (function () {
+      var theme = 'dark';
+      try { theme = localStorage.getItem('c360_theme') || 'dark'; } catch (e) {}
+      document.documentElement.setAttribute('data-theme', theme === 'light' ? 'light' : 'dark');
+    })();
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=Newsreader:wght@500;600&amp;display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body class="login-body">
+  <button id="themeToggleBtn" class="theme-toggle login-theme-toggle" type="button" aria-label="Cambiar tema">
+    <svg class="icon icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"></path></svg>
+    <svg class="icon icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42"></path></svg>
+    <span class="theme-label">Modo claro</span>
+  </button>
   <main class="login-card">
     <div class="login-brand">
       <div class="brand-mark">C360</div>
@@ -38,6 +50,26 @@
     </form>
     <div class="footer-note">La autenticación usa JWT y credenciales verificadas en Cloudflare D1.</div>
   </main>
+  <script>
+    (function () {
+      var btn = document.getElementById('themeToggleBtn');
+      if (!btn) return;
+      var label = btn.querySelector('.theme-label');
+      function sync() {
+        var light = document.documentElement.getAttribute('data-theme') === 'light';
+        if (label) label.textContent = light ? 'Modo oscuro' : 'Modo claro';
+        btn.setAttribute('aria-label', light ? 'Activar modo oscuro' : 'Activar modo claro');
+        btn.setAttribute('aria-pressed', String(light));
+      }
+      sync();
+      btn.addEventListener('click', function () {
+        var next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', next);
+        try { localStorage.setItem('c360_theme', next); } catch (e) {}
+        sync();
+      });
+    })();
+  </script>
   <script>
     const API_BASE = '';
     const token = sessionStorage.getItem('c360_token');

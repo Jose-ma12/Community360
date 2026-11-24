@@ -4,9 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Community360 | Dashboard</title>
+  <script>
+    (function () {
+      var theme = 'dark';
+      try { theme = localStorage.getItem('c360_theme') || 'dark'; } catch (e) {}
+      document.documentElement.setAttribute('data-theme', theme === 'light' ? 'light' : 'dark');
+    })();
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=Newsreader:wght@500;600&amp;display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/styles.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -21,6 +28,11 @@
         </div>
       </div>
       <div class="actions">
+        <button id="themeToggleBtn" class="theme-toggle" type="button" aria-label="Cambiar tema">
+          <svg class="icon icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"></path></svg>
+          <svg class="icon icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42"></path></svg>
+          <span class="theme-label">Modo claro</span>
+        </button>
         <div class="status-pill" title="Estado de WebSocket">
           <span id="wsDot" class="dot"></span>
           <span id="wsStatus">WS: desconectado</span>
@@ -34,6 +46,7 @@
     <section class="section" id="seccion-tiempo-real">
       <div class="section-header">
         <div class="section-heading">
+          <span class="section-pill section-pill-a">Sección A · Tiempo Real</span>
           <h2>I. TELEMETRÍA EN TIEMPO REAL</h2>
           <p>Eventos de Firestore y WebSockets. Actualización automática ante operaciones registradas desde Postman.</p>
         </div>
@@ -106,6 +119,7 @@
     <section class="section" id="seccion-historicos">
       <div class="section-header">
         <div class="section-heading">
+          <span class="section-pill section-pill-b">Sección B · Históricos D1</span>
           <h2>II. ANÁLISIS HISTÓRICO CONSOLIDADO</h2>
           <p>Datos agregados de Cloudflare D1 consultados vía REST, sin datos simulados.</p>
         </div>
