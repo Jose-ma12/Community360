@@ -64,6 +64,9 @@
 
 * { box-sizing: border-box; }
 
+*::before,
+*::after { pointer-events: none; }
+
 html, body {
   margin: 0;
   min-height: 100vh;
@@ -79,8 +82,12 @@ body {
   transition: background-color 0.25s ease, color 0.25s ease;
 }
 
-a { color: var(--accent-steel); }
+a { color: var(--accent-steel); cursor: pointer; }
 a:hover { color: var(--accent-copper); }
+button,
+summary { cursor: pointer; }
+button svg,
+a svg { pointer-events: none; }
 
 * {
   scrollbar-color: var(--border-color) transparent;
@@ -221,9 +228,11 @@ a:hover { color: var(--accent-copper); }
 .rail-theme:focus-visible .rail-tooltip,
 .rail-logout:focus-visible .rail-tooltip { opacity: 1; }
 
-.app-shell { margin-left: 68px; min-height: 100vh; }
+.app-shell { position: relative; z-index: 1; margin-left: 68px; min-height: 100vh; }
 
 .page-header {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -262,7 +271,7 @@ a:hover { color: var(--accent-copper); }
 .status-pill .dot.ok { background: #4E9A7E; box-shadow: 0 0 0 3px rgba(78, 154, 126, 0.18), 0 0 12px rgba(78, 154, 126, 0.45); }
 .status-pill .dot.bad { background: #C25450; box-shadow: 0 0 0 3px rgba(194, 84, 80, 0.16); }
 
-.app-main { width: 100%; max-width: 1600px; margin: 0 auto; padding: 24px 28px 48px; }
+.app-main { position: relative; z-index: 1; width: 100%; max-width: 1600px; margin: 0 auto; padding: 24px 28px 48px; }
 
 .section { margin-bottom: 32px; }
 .section + .section { border-top: 1px solid var(--border-color); padding-top: 28px; }
@@ -672,10 +681,11 @@ table.data tbody td:nth-child(8) {
   position: relative;
   min-width: 0;
   overflow: hidden;
+  pointer-events: none;
   background: var(--bg-main);
   border-right: 1px solid var(--border-color);
 }
-.login-geometry { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.login-geometry { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
 .login-form-panel {
   display: grid;
   place-items: center;

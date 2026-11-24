@@ -1,7 +1,9 @@
 (() => {
   const API_BASE = '';
-  const token = sessionStorage.getItem('c360_token');
-  const user = JSON.parse(sessionStorage.getItem('c360_user') || '{}');
+  let token = '';
+  let user = {};
+  try { token = sessionStorage.getItem('c360_token') || ''; } catch {}
+  try { user = JSON.parse(sessionStorage.getItem('c360_user') || '{}'); } catch {}
 
   if (!token) {
     window.location.href = '/static/login.html';
@@ -9,11 +11,15 @@
   }
 
   const $ = (id) => document.getElementById(id);
+  function setText(id, value) {
+    const el = $(id);
+    if (el) el.textContent = value;
+  }
   const wsDot = $('wsDot');
   const wsStatus = $('wsStatus');
   const wsLog = $('wsLog');
   const logoutBtn = $('logoutBtn');
-  $('userInfo').textContent = user.nombre_completo ? `${user.nombre_completo} (${user.username || ''})` : 'Monitoreo en tiempo real e históricos';
+  setText('userInfo', user.nombre_completo ? `${user.nombre_completo} (${user.username || ''})` : 'Monitoreo en tiempo real e históricos');
 
   const charts = {};
   let ws = null;
@@ -85,6 +91,24 @@
     themeToggleBtn.addEventListener('click', () => setTheme(currentTheme() === 'dark' ? 'light' : 'dark'));
   }
 
+  const railLinks = Array.from(document.querySelectorAll('.rail-link'));
+  function markActiveRailLink(activeLink) {
+    railLinks.forEach((link) => link.classList.toggle('is-active', link === activeLink));
+  }
+  railLinks.forEach((link) => {
+    link.addEventListener('click', (ev) => {
+      const hash = link.getAttribute('href') || '';
+      const target = hash.startsWith('#') ? document.getElementById(hash.slice(1)) : null;
+      if (!target) return;
+      ev.preventDefault();
+      markActiveRailLink(link);
+      if (typeof target.scrollIntoView === 'function') target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      try { history.replaceState(null, '', hash); } catch {}
+    });
+  });
+  const initialRailLink = railLinks.find((link) => link.getAttribute('href') === window.location.hash);
+  if (initialRailLink) markActiveRailLink(initialRailLink);
+
   function authHeaders() {
     return { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
   }
@@ -95,8 +119,10 @@
       headers: { ...(options.headers || {}), ...authHeaders() }
     });
     if (resp.status === 401) {
-      sessionStorage.removeItem('c360_token');
-      sessionStorage.removeItem('c360_user');
+      try {
+        sessionStorage.removeItem('c360_token');
+        sessionStorage.removeItem('c360_user');
+      } catch {}
       window.location.href = '/static/login.html';
       throw new Error('No autorizado');
     }
@@ -112,18 +138,22 @@
     }
   }
 
-  logoutBtn.addEventListener('click', async () => {
-    manualLogout = true;
-    try { await apiFetch('/api/auth/logout', { method: 'POST' }); } catch {}
-    sessionStorage.removeItem('c360_token');
-    sessionStorage.removeItem('c360_user');
-    if (ws) try { ws.close(); } catch {}
-    window.location.href = '/static/login.html';
-  });
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', async () => {
+      manualLogout = true;
+      try { await apiFetch('/api/auth/logout', { method: 'POST' }); } catch {}
+      try {
+        sessionStorage.removeItem('c360_token');
+        sessionStorage.removeItem('c360_user');
+      } catch {}
+      if (ws) try { ws.close(); } catch {}
+      window.location.href = '/static/login.html';
+    });
+  }
 
   function setWsStatus(connected, text) {
-    wsDot.className = `dot ${connected ? 'ok' : 'bad'}`;
-    wsStatus.textContent = text;
+    if (wsDot) wsDot.className = `dot ${connected ? 'ok' : 'bad'}`;
+    if (wsStatus) wsStatus.textContent = text;
   }
 
   const METODO_POR_EVENTO = {
@@ -133,6 +163,7 @@
   };
 
   function logWsEvent(evt) {
+    if (!wsLog) return;
     if (wsLog.querySelector('.empty')) wsLog.innerHTML = '';
     const item = document.createElement('div');
     item.className = 'log-item';
@@ -167,11 +198,11 @@
   }
 
   function updateKpis(metricas) {
-    $('kpiTotal').textContent = fmtNum(metricas.total_interacciones);
-    $('kpiSentimiento').textContent = fmtNum(metricas.sentimiento_promedio);
-    $('kpiReacciones').textContent = fmtNum(metricas.reacciones_promedio);
-    $('kpiLongitud').textContent = fmtNum(metricas.longitud_media_texto);
-    $('ultimaActualizacion').textContent = `Última actualización: ${metricas.ultima_actualizacion || '—'}`;
+    setText('kpiTotal', fmtNum(metricas.total_interacciones));
+    setText('kpiSentimiento', fmtNum(metricas.sentimiento_promedio));
+    setText('kpiReacciones', fmtNum(metricas.reacciones_promedio));
+    setText('kpiLongitud', fmtNum(metricas.longitud_media_texto));
+    setText('ultimaActualizacion', `Última actualización: ${metricas.ultima_actualizacion || '—'}`);
   }
 
   function ensureChart(id, config) {
@@ -259,6 +290,8 @@
   }
 
   function renderHeatmap(heatmap) {
+    const container = $('heatmapContainer');
+    if (!container) return;
     const dias = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
     const bloques = ['00-04', '04-08', '08-12', '12-16', '16-20', '20-24'];
     let max = 0;
@@ -276,11 +309,12 @@
       html += '</tr>';
     });
     html += '</tbody></table>';
-    $('heatmapContainer').innerHTML = html;
+    container.innerHTML = html;
   }
 
   function renderUltimas(interacciones) {
     const tbody = $('tablaInteracciones');
+    if (!tbody) return;
     if (!interacciones || !interacciones.length) {
       tbody.innerHTML = '<tr><td colspan="9" class="empty">Sin interacciones disponibles.</td></tr>';
       return;
@@ -398,12 +432,12 @@
 
   function renderHistoricos(data) {
     const r = data.resumen_usuarios || {};
-    $('hTotalUsuarios').textContent = fmtNum(r.total_usuarios);
-    $('hConConsent').textContent = fmtNum(r.con_consentimiento_geo);
-    $('hSinConsent').textContent = fmtNum(r.sin_consentimiento_geo);
-    $('hCuarentena').textContent = fmtNum(data.interacciones_cuarentena);
+    setText('hTotalUsuarios', fmtNum(r.total_usuarios));
+    setText('hConConsent', fmtNum(r.con_consentimiento_geo));
+    setText('hSinConsent', fmtNum(r.sin_consentimiento_geo));
+    setText('hCuarentena', fmtNum(data.interacciones_cuarentena));
     if (data.privacidad?.filtro_top_ciudades) {
-      $('bannerPrivacidad').textContent = `Verificación de privacidad: ${data.privacidad.filtro_top_ciudades} (regla ${data.privacidad.regla || 'sin_datos_geo'}).`;
+      setText('bannerPrivacidad', `Verificación de privacidad: ${data.privacidad.filtro_top_ciudades} (regla ${data.privacidad.regla || 'sin_datos_geo'}).`);
     }
 
     const plat = data.por_plataforma_principal || [];
