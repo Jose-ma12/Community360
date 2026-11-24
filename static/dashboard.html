@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Community360 | Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500;600&amp;display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/styles.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -30,51 +33,52 @@
   <main class="container">
     <section class="section" id="seccion-tiempo-real">
       <div class="section-header">
-        <div>
+        <div class="section-heading">
+          <span class="section-badge">TIEMPO REAL · FIRESTORE + WEBSOCKETS</span>
           <h2>Sección A — Tiempo real (WebSockets + Firestore)</h2>
           <p>Actualización automática ante eventos POST/PUT/DELETE realizados desde Postman.</p>
         </div>
-        <div class="muted" id="ultimaActualizacion">Última actualización: —</div>
+        <div class="muted timestamp" id="ultimaActualizacion">Última actualización: —</div>
       </div>
 
       <div class="grid grid-kpi">
-        <article class="card kpi">
+        <article class="card kpi kpi-card">
           <div class="label">Total de interacciones</div>
           <div class="value" id="kpiTotal">0</div>
           <div class="formula">Registros activos en Firestore</div>
         </article>
-        <article class="card kpi">
+        <article class="card kpi kpi-card">
           <div class="label">Sentimiento promedio</div>
           <div class="value" id="kpiSentimiento">0</div>
           <div class="formula">Promedio aritmético (rango -1 a 1)</div>
         </article>
-        <article class="card kpi">
+        <article class="card kpi kpi-card">
           <div class="label">Reacciones promedio</div>
           <div class="value" id="kpiReacciones">0</div>
           <div class="formula">Promedio de reacciones por interacción</div>
         </article>
-        <article class="card kpi">
+        <article class="card kpi kpi-card">
           <div class="label">Longitud media de texto</div>
           <div class="value" id="kpiLongitud">0</div>
           <div class="formula">Caracteres promedio (excluye reacciones)</div>
         </article>
       </div>
 
-      <div class="grid grid-2" style="margin-top:16px;">
-        <article class="card">
+      <div class="grid grid-2 mt-4">
+        <article class="card chart-card">
           <h3>Interacciones por plataforma (canal)</h3>
           <div class="chart-wrap"><canvas id="chartCanal"></canvas></div>
         </article>
-        <article class="card">
+        <article class="card chart-card">
           <h3>Interacciones por tema</h3>
           <div class="chart-wrap"><canvas id="chartTema"></canvas></div>
         </article>
       </div>
 
-      <div class="grid grid-2" style="margin-top:16px;">
+      <div class="grid grid-2 mt-4">
         <article class="card">
           <h3>Mapa de calor de actividad (UTC)</h3>
-          <p class="muted" style="margin-top:-4px;">Filas: Lun–Dom · Columnas: bloques de 4 horas UTC</p>
+          <p class="muted subtitle">Filas: Lun–Dom · Columnas: bloques de 4 horas UTC</p>
           <div class="heatmap" id="heatmapContainer"></div>
         </article>
         <article class="card">
@@ -83,7 +87,7 @@
         </article>
       </div>
 
-      <article class="card" style="margin-top:16px;">
+      <article class="card table-card mt-4">
         <h3>Últimas interacciones (solo lectura)</h3>
         <div class="table-wrap">
           <table class="data">
@@ -102,31 +106,32 @@
 
     <section class="section" id="seccion-historicos">
       <div class="section-header">
-        <div>
+        <div class="section-heading">
+          <span class="section-badge">HISTÓRICOS · CLOUDFLARE D1</span>
           <h2>Sección B — Históricos (Cloudflare D1 vía REST)</h2>
           <p>Datos agregados consultados directamente desde D1, sin datos simulados.</p>
         </div>
       </div>
 
       <div class="grid grid-kpi">
-        <article class="card kpi"><div class="label">Miembros registrados</div><div class="value" id="hTotalUsuarios">1068</div><div class="formula">Tabla: usuarios</div></article>
-        <article class="card kpi"><div class="label">Ubicación autorizada</div><div class="value" id="hConConsent">897</div><div class="formula">consentimiento_datos = 1</div></article>
-        <article class="card kpi"><div class="label">Excluidos por privacidad</div><div class="value" id="hSinConsent">171</div><div class="formula">consentimiento_datos = 0</div></article>
-        <article class="card kpi"><div class="label">Interacciones en cuarentena</div><div class="value" id="hCuarentena">793</div><div class="formula">Tabla: interacciones_cuarentena</div></article>
+        <article class="card kpi kpi-card"><div class="label">Miembros registrados</div><div class="value" id="hTotalUsuarios">1068</div><div class="formula">Tabla: usuarios</div></article>
+        <article class="card kpi kpi-card"><div class="label">Ubicación autorizada</div><div class="value" id="hConConsent">897</div><div class="formula">consentimiento_datos = 1</div></article>
+        <article class="card kpi kpi-card"><div class="label">Excluidos por privacidad</div><div class="value" id="hSinConsent">171</div><div class="formula">consentimiento_datos = 0</div></article>
+        <article class="card kpi kpi-card"><div class="label">Interacciones en cuarentena</div><div class="value" id="hCuarentena">793</div><div class="formula">Tabla: interacciones_cuarentena</div></article>
       </div>
 
       <div class="banner" id="bannerPrivacidad">Verificación de privacidad: top ciudades calculado con INNER JOIN usuarios_ubicacion + usuarios WHERE consentimiento_datos = 1 (regla sin_datos_geo).</div>
 
       <div class="grid grid-3">
-        <article class="card">
+        <article class="card chart-card">
           <h3>Plataforma principal</h3>
           <div class="chart-wrap"><canvas id="chartPlataforma"></canvas></div>
         </article>
-        <article class="card">
+        <article class="card chart-card">
           <h3>Riesgo de abandono</h3>
           <div class="chart-wrap"><canvas id="chartRiesgo"></canvas></div>
         </article>
-        <article class="card">
+        <article class="card chart-card">
           <h3>Top ciudades autorizadas</h3>
           <div class="chart-wrap"><canvas id="chartCiudades"></canvas></div>
         </article>

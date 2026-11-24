@@ -115,23 +115,59 @@
     return charts[id];
   }
 
-  const palette = ['#1f6feb', '#00a389', '#f0a202', '#d94f4f', '#7c5cff', '#2bb3c0', '#ef6c9f', '#6b7280', '#4aa3ff', '#90be6d'];
+  const palette = ['#38bdf8', '#f59e0b', '#10b981', '#818cf8', '#fb7185', '#2dd4bf'];
+  const chartGridColor = 'rgba(148, 163, 184, 0.08)';
+  const chartTickColor = '#94a3b8';
+  const chartTooltip = {
+    backgroundColor: '#0f172a',
+    borderColor: 'rgba(245, 158, 11, 0.35)',
+    borderWidth: 1,
+    titleColor: '#fbbf24',
+    bodyColor: '#e2e8f0',
+    cornerRadius: 10,
+    padding: 12,
+    boxPadding: 6
+  };
+  const chartLegendLabels = { color: chartTickColor, padding: 14, usePointStyle: true, boxWidth: 8 };
 
   function updateRealtimeCharts(metricas) {
     const canalLabels = Object.keys(metricas.por_canal || {});
     const canalValues = canalLabels.map(k => metricas.por_canal[k]);
     ensureChart('chartCanal', {
       type: 'bar',
-      data: { labels: canalLabels, datasets: [{ label: 'Interacciones', data: canalValues, backgroundColor: '#1f6feb', borderRadius: 8 }] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+      data: { labels: canalLabels, datasets: [{ label: 'Interacciones', data: canalValues, backgroundColor: '#38bdf8', borderColor: '#7dd3fc', borderWidth: 1, borderRadius: 6 }] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { ...chartTooltip } },
+        scales: {
+          y: { beginAtZero: true, ticks: { precision: 0, color: chartTickColor }, grid: { color: chartGridColor, drawTicks: false }, border: { color: chartGridColor } },
+          x: { ticks: { color: chartTickColor }, grid: { display: false }, border: { color: chartGridColor } }
+        }
+      }
     });
 
     const temaLabels = Object.keys(metricas.por_tema || {});
     const temaValues = temaLabels.map(k => metricas.por_tema[k]);
     ensureChart('chartTema', {
       type: 'doughnut',
-      data: { labels: temaLabels, datasets: [{ data: temaValues, backgroundColor: temaLabels.map((_, i) => palette[i % palette.length]) }] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+      data: {
+        labels: temaLabels,
+        datasets: [{
+          data: temaValues,
+          backgroundColor: temaLabels.map((_, i) => palette[i % palette.length]),
+          borderColor: 'rgba(6, 10, 20, 0.9)',
+          borderWidth: 2,
+          hoverBorderColor: '#fbbf24',
+          hoverOffset: 6
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '68%',
+        plugins: { legend: { position: 'bottom', labels: { ...chartLegendLabels } }, tooltip: { ...chartTooltip } }
+      }
     });
   }
 
@@ -273,16 +309,40 @@
     const plat = data.por_plataforma_principal || [];
     ensureChart('chartPlataforma', {
       type: 'bar',
-      data: { labels: plat.map(x => x.plataforma_principal || 'N/D'), datasets: [{ label: 'Usuarios', data: plat.map(x => x.total), backgroundColor: '#00a389', borderRadius: 8 }] },
-      options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } }
+      data: { labels: plat.map(x => x.plataforma_principal || 'N/D'), datasets: [{ label: 'Usuarios', data: plat.map(x => x.total), backgroundColor: '#f59e0b', borderColor: '#fbbf24', borderWidth: 1, borderRadius: 6 }] },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { ...chartTooltip } },
+        scales: {
+          x: { beginAtZero: true, ticks: { precision: 0, color: chartTickColor }, grid: { color: chartGridColor, drawTicks: false }, border: { color: chartGridColor } },
+          y: { ticks: { color: chartTickColor }, grid: { display: false }, border: { color: chartGridColor } }
+        }
+      }
     });
 
     const riesgo = data.riesgo_abandono || {};
     const riesgoLabels = ['Riesgo alto', 'Riesgo medio', 'Activos'];
     ensureChart('chartRiesgo', {
       type: 'doughnut',
-      data: { labels: riesgoLabels, datasets: [{ data: riesgoLabels.map(l => riesgo[l] || 0), backgroundColor: ['#d94f4f', '#f0a202', '#20b26b'] }] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+      data: {
+        labels: riesgoLabels,
+        datasets: [{
+          data: riesgoLabels.map(l => riesgo[l] || 0),
+          backgroundColor: ['#fb7185', '#f59e0b', '#10b981'],
+          borderColor: 'rgba(6, 10, 20, 0.9)',
+          borderWidth: 2,
+          hoverBorderColor: '#fbbf24',
+          hoverOffset: 6
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '68%',
+        plugins: { legend: { position: 'bottom', labels: { ...chartLegendLabels } }, tooltip: { ...chartTooltip } }
+      }
     });
 
     const ciudades = data.top_ciudades_autorizadas || [];
@@ -290,9 +350,17 @@
       type: 'bar',
       data: {
         labels: ciudades.map(c => `${c.ciudad || 'N/D'}${c.estado ? ', ' + c.estado : ''}`),
-        datasets: [{ label: 'Usuarios', data: ciudades.map(c => c.total), backgroundColor: '#1f6feb', borderRadius: 8 }]
+        datasets: [{ label: 'Usuarios', data: ciudades.map(c => c.total), backgroundColor: '#38bdf8', borderColor: '#7dd3fc', borderWidth: 1, borderRadius: 6 }]
       },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { ...chartTooltip } },
+        scales: {
+          y: { beginAtZero: true, ticks: { precision: 0, color: chartTickColor }, grid: { color: chartGridColor, drawTicks: false }, border: { color: chartGridColor } },
+          x: { ticks: { color: chartTickColor }, grid: { display: false }, border: { color: chartGridColor } }
+        }
+      }
     });
   }
 

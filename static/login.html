@@ -4,19 +4,27 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Community360 | Iniciar sesión</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500;600&amp;display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body class="login-body">
   <main class="login-card">
-    <div class="brand" style="margin-bottom:18px;">
+    <div class="login-brand">
       <div class="brand-mark">C360</div>
-      <div>
-        <h1 style="font-size:1.4rem;margin:0;">Community360</h1>
-        <p style="margin:2px 0 0;color:#5f6f85;">Acceso seguro al panel</p>
+      <div class="login-brand-copy">
+        <h1>Community360</h1>
+        <p class="brand-subtitle">Acceso seguro al panel</p>
       </div>
     </div>
-    <h1>Iniciar sesión</h1>
-    <p>Ingresa con tu cuenta autorizada para acceder al dashboard.</p>
+
+    <div class="login-heading">
+      <span class="eyebrow">ACCESO EJECUTIVO</span>
+      <h2>Iniciar sesión</h2>
+      <p>Ingresa con tu cuenta autorizada para acceder al dashboard.</p>
+    </div>
+
     <div id="loginError" class="error"></div>
     <form id="loginForm" novalidate>
       <div class="field">
