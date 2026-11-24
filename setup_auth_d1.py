@@ -13,6 +13,28 @@ from dotenv import load_dotenv
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
+ESQUEMA_USUARIOS_SISTEMA = """
+CREATE TABLE IF NOT EXISTS usuarios_sistema (
+    id_admin INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    nombre_completo TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    rol TEXT NOT NULL DEFAULT 'administrador',
+    activo INTEGER NOT NULL DEFAULT 1,
+    creado_utc TEXT NOT NULL
+)
+"""
+
+COLUMNAS_ESPERADAS = (
+    ("id_admin", "INTEGER", 0, 1),
+    ("username", "TEXT", 1, 0),
+    ("nombre_completo", "TEXT", 1, 0),
+    ("password_hash", "TEXT", 1, 0),
+    ("rol", "TEXT", 1, 0),
+    ("activo", "INTEGER", 1, 0),
+    ("creado_utc", "TEXT", 1, 0),
+)
+
 DEFAULT_ADMIN = {
     "username": "admin_c360",
     "nombre_completo": "José Manuel González Canché",
@@ -52,19 +74,30 @@ def ejecutar_d1(sql, params=None):
 
 
 def crear_tabla_usuarios_sistema():
-    ejecutar_d1(
-        """
-        CREATE TABLE IF NOT EXISTS usuarios_sistema (
-            id_admin INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT NOT NULL UNIQUE,
-            nombre_completo TEXT NOT NULL,
-            password_hash TEXT NOT NULL,
-            rol TEXT NOT NULL DEFAULT 'administrador',
-            activo INTEGER NOT NULL DEFAULT 1,
-            creado_utc TEXT NOT NULL
+    ejecutar_d1(ESQUEMA_USUARIOS_SISTEMA)
+
+
+def columnas_actuales_usuarios_sistema():
+    pragma = ejecutar_d1("PRAGMA table_info(usuarios_sistema);")
+    return tuple(
+        (
+            fila.get("name"),
+            str(fila.get("type") or "").upper(),
+            int(fila.get("notnull") or 0),
+            int(fila.get("pk") or 0),
         )
-        """
+        for fila in pragma.get("results", [])
     )
+
+
+def verificar_o_recrear_tabla_usuarios_sistema():
+    columnas = columnas_actuales_usuarios_sistema()
+    if columnas == COLUMNAS_ESPERADAS:
+        return False
+    print("[INFO] Esquema de usuarios_sistema distinto del esperado; se recrea la tabla")
+    ejecutar_d1("DROP TABLE IF EXISTS usuarios_sistema;")
+    crear_tabla_usuarios_sistema()
+    return True
 
 
 def registrar_o_actualizar_admin(username=None, nombre_completo=None, password=None, rol="administrador", activo=1):
@@ -104,8 +137,11 @@ def registrar_o_actualizar_admin(username=None, nombre_completo=None, password=N
 
 
 def main():
-    crear_tabla_usuarios_sistema()
-    print("[OK] Tabla usuarios_sistema verificada en D1")
+    recreada = verificar_o_recrear_tabla_usuarios_sistema()
+    if recreada:
+        print("[OK] Tabla usuarios_sistema recreada en D1")
+    else:
+        print("[OK] Tabla usuarios_sistema verificada en D1")
     registrar_o_actualizar_admin()
     verificacion = ejecutar_d1(
         "SELECT id_admin, username, nombre_completo, rol, activo, creado_utc FROM usuarios_sistema WHERE username = ?",

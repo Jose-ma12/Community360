@@ -1,4 +1,4 @@
-﻿id_interaccion,id_usuario,timestamp,canal,tipo,texto,tema,sentimiento,idioma,pais,estado,ciudad,dispositivo,longitud_texto,reacciones_recibidas,etiquetas
+id_interaccion,id_usuario,timestamp,canal,tipo,texto,tema,sentimiento,idioma,pais,estado,ciudad,dispositivo,longitud_texto,reacciones_recibidas,etiquetas
 I0001825,U000852,2026-10-28T16:59:03Z,Facebook,comentario,¿Alguien conoce bandas locales de la región?,musica,0.86,es,México,Yucatán,Mérida,Android,44,2,
 I0000410,U005764,2026-10-31T06:31:24Z,Instagram,reaccion,,reglas_moderacion,-0.75,es,,,,Android,50,3,arte
 I0004507,U002888,2026-11-02T09:53:51Z,Facebook,comentario,"El servidor del juego estuvo caído toda la tarde, qué fastidio.",videojuegos,-0.33,es,México,Quintana Roo,Cancún,Web,63,0,humor|musica|aviso

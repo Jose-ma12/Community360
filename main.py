@@ -27,6 +27,8 @@ DIAS_HEATMAP = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 BLOQUES_HEATMAP = ["00-04", "04-08", "08-12", "12-16", "16-20", "20-24"]
 ID_INTERACCION_RE = re.compile(r"^I\d+$")
 ID_USUARIO_RE = re.compile(r"^U\d+$")
+COLUMNAS_LOGIN_USUARIO = ("username", "nombre_completo", "password_hash", "rol", "activo")
+COLUMNAS_PERFIL_USUARIO = ("username", "nombre_completo", "rol", "activo")
 
 app = FastAPI(title="Community360 API", version="1.0.0")
 app.add_middleware(
@@ -276,7 +278,7 @@ async def obtener_usuario_actual(credentials: HTTPAuthorizationCredentials | Non
     if not username:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido")
     res = ejecutar_d1(
-        "SELECT username, nombre_completo, rol, activo FROM usuarios_sistema WHERE username = ? LIMIT 1",
+        f"SELECT {', '.join(COLUMNAS_PERFIL_USUARIO)} FROM usuarios_sistema WHERE username = ? LIMIT 1",
         [username],
     )
     rows = res.get("results", [])
@@ -394,7 +396,7 @@ async def root():
 @app.post("/api/auth/login")
 async def login(req: LoginRequest):
     res = ejecutar_d1(
-        "SELECT username, nombre_completo, password_hash, rol, activo FROM usuarios_sistema WHERE username = ? LIMIT 1",
+        f"SELECT {', '.join(COLUMNAS_LOGIN_USUARIO)} FROM usuarios_sistema WHERE username = ? LIMIT 1",
         [req.username.strip()],
     )
     rows = res.get("results", [])
