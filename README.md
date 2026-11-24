@@ -12,6 +12,7 @@ Plataforma de analítica comunitaria con backend FastAPI, autenticación JWT, Cl
 ## Requisitos
 
 - Python 3.11+
+- Plantilla de configuración: `.env.example` (copiar a `.env` y completar sin versionar los valores reales)
 - Variables en `.env`: `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_DATABASE_ID`, `CLOUDFLARE_API_TOKEN`, `FIREBASE_CREDENTIALS_PATH`, `JWT_SECRET_KEY`, `JWT_EXPIRE_MINUTES`
 - Credenciales Firebase en el archivo indicado por `FIREBASE_CREDENTIALS_PATH`
 
@@ -21,7 +22,10 @@ Plataforma de analítica comunitaria con backend FastAPI, autenticación JWT, Cl
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
+copy .env.example .env
 ```
+
+Después de copiar la plantilla, completa `.env` con tus valores reales. Tanto `.env` como `firebase_credentials.json` están excluidos por `.gitignore`.
 
 ## Inicialización de autenticación (Fase 3)
 
