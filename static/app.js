@@ -48,6 +48,7 @@
     chartTooltip.borderColor = cssVar('--chart-tooltip-border');
     chartTooltip.titleColor = cssVar('--chart-tooltip-text');
     chartTooltip.bodyColor = cssVar('--chart-tooltip-text');
+    chartLegendLabels.color = chartTickColor;
 
     Object.values(charts).forEach((chart) => {
       const tooltip = chart.options?.plugins?.tooltip;
@@ -179,27 +180,36 @@
     return charts[id];
   }
 
-  const palette = ['#E5C158', '#3B82F6', '#10B981', '#8B5CF6', '#F43F5E', '#0EA5E9', '#D97706', '#14B8A6'];
-  let chartGridColor = 'rgba(255, 255, 255, 0.07)';
-  let chartTickColor = '#94A3B8';
+  const palette = ['#3B6E8C', '#C86D44', '#D99B26', '#4E9A7E', '#5B8FB9', '#B85D3B', '#8C7A5B', '#6B9E8A'];
+  let chartGridColor = cssVar('--chart-grid');
+  let chartTickColor = cssVar('--chart-tick');
   const chartTooltip = {
-    backgroundColor: '#0D111C',
-    borderColor: 'rgba(229, 193, 88, 0.28)',
+    backgroundColor: cssVar('--chart-tooltip-bg'),
+    borderColor: cssVar('--chart-tooltip-border'),
     borderWidth: 1,
-    titleColor: '#F8FAFC',
-    bodyColor: '#F8FAFC',
+    titleColor: cssVar('--chart-tooltip-text'),
+    bodyColor: cssVar('--chart-tooltip-text'),
     cornerRadius: 8,
     padding: 10,
     boxPadding: 4
   };
   const chartLegendLabels = { color: chartTickColor, padding: 12, usePointStyle: true, boxWidth: 8 };
 
+  const HEAT_STOPS = [[59, 110, 140], [217, 155, 38], [200, 109, 68]];
+  function heatColor(ratio) {
+    const t = Math.max(0, Math.min(1, ratio)) * (HEAT_STOPS.length - 1);
+    const i = Math.min(Math.floor(t), HEAT_STOPS.length - 2);
+    const f = t - i;
+    const rgb = HEAT_STOPS[i].map((channel, k) => Math.round(channel + (HEAT_STOPS[i + 1][k] - channel) * f));
+    return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${0.16 + ratio * 0.78})`;
+  }
+
   function updateRealtimeCharts(metricas) {
     const canalLabels = Object.keys(metricas.por_canal || {});
     const canalValues = canalLabels.map(k => metricas.por_canal[k]);
     ensureChart('chartCanal', {
       type: 'bar',
-      data: { labels: canalLabels, datasets: [{ label: 'Interacciones', data: canalValues, backgroundColor: '#E5C158', borderColor: '#3B82F6', borderWidth: 1, borderRadius: 6 }] },
+      data: { labels: canalLabels, datasets: [{ label: 'Interacciones', data: canalValues, backgroundColor: palette[0], borderColor: palette[4], borderWidth: 1, borderRadius: 6 }] },
       options: {
         responsive: true,
         maintainAspectRatio: false,
@@ -222,7 +232,9 @@
           backgroundColor: temaLabels.map((_, i) => palette[i % palette.length]),
           borderColor: cssVar('--bg-card'),
           borderWidth: 1,
-          hoverBorderColor: '#E5C158',
+          borderRadius: 6,
+          hoverBorderRadius: 6,
+          hoverBorderColor: palette[2],
           hoverOffset: 4
         }]
       },
@@ -246,7 +258,7 @@
       bloques.forEach(b => {
         const v = Number(heatmap?.[d]?.[b] || 0);
         const ratio = max ? v / max : 0;
-        const bg = `rgba(59,130,246,${0.08 + ratio * 0.82})`;
+        const bg = heatColor(ratio);
         const color = ratio > 0.55 ? '#fff' : 'var(--text-primary)';
         html += `<td class="cell" style="background:${bg};color:${color}">${v}</td>`;
       });
@@ -383,7 +395,7 @@
     const plat = data.por_plataforma_principal || [];
     ensureChart('chartPlataforma', {
       type: 'bar',
-      data: { labels: plat.map(x => x.plataforma_principal || 'N/D'), datasets: [{ label: 'Usuarios', data: plat.map(x => x.total), backgroundColor: '#10B981', borderColor: '#059669', borderWidth: 1, borderRadius: 6 }] },
+      data: { labels: plat.map(x => x.plataforma_principal || 'N/D'), datasets: [{ label: 'Usuarios', data: plat.map(x => x.total), backgroundColor: palette[3], borderColor: palette[7], borderWidth: 1, borderRadius: 6 }] },
       options: {
         indexAxis: 'y',
         responsive: true,
@@ -404,10 +416,12 @@
         labels: riesgoLabels,
         datasets: [{
           data: riesgoLabels.map(l => riesgo[l] || 0),
-          backgroundColor: ['#D97706', '#F43F5E', '#10B981'],
+          backgroundColor: [palette[2], palette[1], palette[3]],
           borderColor: cssVar('--bg-card'),
           borderWidth: 1,
-          hoverBorderColor: '#E5C158',
+          borderRadius: 6,
+          hoverBorderRadius: 6,
+          hoverBorderColor: palette[2],
           hoverOffset: 4
         }]
       },
@@ -424,7 +438,7 @@
       type: 'bar',
       data: {
         labels: ciudades.map(c => `${c.ciudad || 'N/D'}${c.estado ? ', ' + c.estado : ''}`),
-        datasets: [{ label: 'Usuarios', data: ciudades.map(c => c.total), backgroundColor: '#3B82F6', borderColor: '#8B5CF6', borderWidth: 1, borderRadius: 6 }]
+        datasets: [{ label: 'Usuarios', data: ciudades.map(c => c.total), backgroundColor: palette[0], borderColor: palette[4], borderWidth: 1, borderRadius: 6 }]
       },
       options: {
         responsive: true,

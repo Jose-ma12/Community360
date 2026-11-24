@@ -13,7 +13,7 @@
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600&amp;family=JetBrains+Mono:wght@500;600&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&amp;family=Plus+Jakarta+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/styles.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -23,10 +23,15 @@
       <div class="brand">
         <div class="brand-mark">C360</div>
         <div>
-          <h1>Community360 Dashboard</h1>
+          <h1>Community360</h1>
           <p id="userInfo">Monitoreo en tiempo real e históricos</p>
         </div>
       </div>
+      <nav class="quick-nav" aria-label="Navegación rápida">
+        <a href="#seccion-tiempo-real">Tiempo real</a>
+        <a href="#zona-pulso">Pulso</a>
+        <a href="#seccion-historicos">Históricos</a>
+      </nav>
       <div class="actions">
         <button id="themeToggleBtn" class="theme-toggle" type="button" aria-label="Cambiar tema">
           <svg class="icon icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"></path></svg>
@@ -35,7 +40,7 @@
         </button>
         <div class="status-pill" title="Estado de WebSocket">
           <span id="wsDot" class="dot"></span>
-          <span id="wsStatus">WS: desconectado</span>
+          <span id="wsStatus">WS: en vivo</span>
         </div>
         <button id="logoutBtn" class="btn btn-ghost">Cerrar sesión</button>
       </div>
@@ -46,7 +51,7 @@
     <section class="section" id="seccion-tiempo-real">
       <div class="section-header">
         <div class="section-heading">
-          <span class="section-pill section-pill-a">Sección A · Tiempo Real</span>
+          <span class="section-pill section-pill-a">Tiempo Real · Firestore + WebSockets</span>
           <h2>I. TELEMETRÍA EN TIEMPO REAL</h2>
           <p>Eventos de Firestore y WebSockets. Actualización automática ante operaciones registradas desde Postman.</p>
         </div>
@@ -88,9 +93,9 @@
         </article>
       </div>
 
-      <div class="grid grid-2 mt-4">
+      <div class="grid grid-2 grid-split-a mt-4">
         <article class="card chart-card">
-          <h3>Interacciones por plataforma (canal)</h3>
+          <h3>Interacciones por canal</h3>
           <div class="chart-wrap"><canvas id="chartCanal"></canvas></div>
         </article>
         <article class="card chart-card">
@@ -99,20 +104,20 @@
         </article>
       </div>
 
-      <div class="grid grid-2 mt-4">
+      <div class="grid grid-2 grid-split-b mt-4">
         <article class="card">
-          <h3>Mapa de calor de actividad (UTC)</h3>
+          <h3>Actividad por hora (UTC)</h3>
           <p class="muted subtitle">Filas: Lun–Dom · Columnas: bloques de 4 horas UTC</p>
           <div class="heatmap" id="heatmapContainer"></div>
         </article>
-        <article class="card">
-          <h3>Bitácora en vivo de eventos WebSocket</h3>
+        <article class="card" id="zona-pulso">
+          <h3>Bitácora WebSocket</h3>
           <div class="log" id="wsLog"><div class="empty">Sin eventos aún.</div></div>
         </article>
       </div>
 
       <article class="card table-card mt-4">
-        <h3>Últimas interacciones (solo lectura)</h3>
+        <h3>Últimas 10 interacciones (solo lectura)</h3>
         <div class="table-wrap">
           <table class="data">
             <thead>
@@ -131,11 +136,13 @@
     <section class="section" id="seccion-historicos">
       <div class="section-header">
         <div class="section-heading">
-          <span class="section-pill section-pill-b">Sección B · Históricos D1</span>
+          <span class="section-pill section-pill-b">Consolidado Histórico · Cloudflare D1</span>
           <h2>II. ANÁLISIS HISTÓRICO CONSOLIDADO</h2>
           <p>Datos agregados de Cloudflare D1 consultados vía REST, sin datos simulados.</p>
         </div>
       </div>
+
+      <div class="banner" id="bannerPrivacidad">Verificación de privacidad: top ciudades calculado con INNER JOIN usuarios_ubicacion + usuarios WHERE consentimiento_datos = 1 (regla sin_datos_geo).</div>
 
       <div class="grid grid-kpi">
         <article class="card kpi kpi-card">
@@ -172,9 +179,7 @@
         </article>
       </div>
 
-      <div class="banner" id="bannerPrivacidad">Verificación de privacidad: top ciudades calculado con INNER JOIN usuarios_ubicacion + usuarios WHERE consentimiento_datos = 1 (regla sin_datos_geo).</div>
-
-      <div class="grid grid-3">
+      <div class="grid grid-3 mt-4">
         <article class="card chart-card">
           <h3>Plataforma principal</h3>
           <div class="chart-wrap"><canvas id="chartPlataforma"></canvas></div>
