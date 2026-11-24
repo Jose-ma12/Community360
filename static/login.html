@@ -17,43 +17,30 @@
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body class="login-body">
-  <header class="login-header">
-    <div class="brand-mark">C360</div>
-    <button id="themeToggleBtn" class="theme-toggle login-theme-toggle" type="button" aria-label="Cambiar tema">
-      <svg class="icon icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"></path></svg>
-      <svg class="icon icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42"></path></svg>
-      <span class="theme-label">Modo claro</span>
-    </button>
-  </header>
+  <button id="themeToggleBtn" class="theme-toggle login-theme-toggle" type="button" aria-label="Cambiar tema">
+    <svg class="icon icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"></path></svg>
+    <svg class="icon icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42"></path></svg>
+    <span class="theme-label">Modo Claro</span>
+  </button>
 
   <main class="login-main">
-    <div class="login-geometry-panel">
-      <svg class="login-geometry" viewBox="0 0 600 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
-        <defs>
-          <pattern id="c360-grid" width="40" height="40" patternUnits="userSpaceOnUse">
-            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#3B6E8C" stroke-opacity="0.18" stroke-width="1"></path>
-          </pattern>
-          <linearGradient id="c360-plane" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stop-color="#3B6E8C" stop-opacity="0.30"></stop>
-            <stop offset="1" stop-color="#C86D44" stop-opacity="0.10"></stop>
-          </linearGradient>
-        </defs>
-        <rect width="600" height="900" fill="#1B2836"></rect>
-        <rect width="600" height="900" fill="url(#c360-grid)"></rect>
-        <path d="M0 0 L600 0 L600 320 L0 760 Z" fill="url(#c360-plane)"></path>
-        <path d="M0 900 L600 520 L600 900 Z" fill="#C86D44" fill-opacity="0.14"></path>
-        <path d="M0 0 L260 0 L0 420 Z" fill="#D99B26" fill-opacity="0.12"></path>
-        <path d="M600 900 L600 640 L330 900 Z" fill="#3B6E8C" fill-opacity="0.16"></path>
-        <circle cx="300" cy="450" r="230" fill="none" stroke="#D99B26" stroke-opacity="0.34" stroke-width="1.4"></circle>
-        <circle cx="300" cy="450" r="170" fill="none" stroke="#3B6E8C" stroke-opacity="0.36" stroke-width="1"></circle>
-        <path d="M70 450 A230 230 0 0 1 530 450" fill="none" stroke="#C86D44" stroke-opacity="0.46" stroke-width="2"></path>
-        <path d="M120 640 L300 300 L480 640 Z" fill="none" stroke="#3B6E8C" stroke-opacity="0.52" stroke-width="1.4"></path>
-        <path d="M300 300 L300 640 M120 640 L480 640" fill="none" stroke="#D99B26" stroke-opacity="0.22" stroke-width="1"></path>
-        <path d="M0 200 L600 680 M0 680 L600 200" fill="none" stroke="#3B6E8C" stroke-opacity="0.14" stroke-width="1"></path>
-        <path d="M0 760 L600 20" fill="none" stroke="#C86D44" stroke-opacity="0.20" stroke-width="1"></path>
-        <circle cx="300" cy="450" r="6" fill="#D99B26" fill-opacity="0.75"></circle>
-        <circle cx="120" cy="640" r="4" fill="#C86D44" fill-opacity="0.65"></circle>
-        <circle cx="480" cy="640" r="4" fill="#3B6E8C" fill-opacity="0.75"></circle>
+    <div class="login-geometry-panel" aria-hidden="true">
+      <svg class="login-geometry" viewBox="0 0 800 900" preserveAspectRatio="xMidYMid slice" focusable="false">
+        <rect class="arch-canvas" width="800" height="900"></rect>
+        <g class="arch-stack">
+          <path class="arch-plane arch-plane--base" d="M70 770 H220 V700 H370 V630 H520 V560 H730 V850 H70 Z"></path>
+          <path class="arch-plane arch-plane--steel" d="M110 700 H250 V630 H400 V560 H550 V490 H690 V790 H110 Z"></path>
+          <path class="arch-plane arch-plane--sage" d="M170 620 H310 V550 H460 V480 H610 V410 H700 V710 H170 Z"></path>
+          <path class="arch-plane arch-plane--copper" d="M240 540 H380 V470 H530 V400 H660 V330 H740 V630 H240 Z"></path>
+          <path class="arch-plane arch-plane--gold" d="M320 430 H440 V360 H560 V290 H660 V220 H720 V520 H320 Z"></path>
+        </g>
+        <g class="arch-lines">
+          <path class="arch-edge arch-edge--base" d="M70 770 H220 V700 H370 V630 H520 V560 H730"></path>
+          <path class="arch-edge arch-edge--steel" d="M110 700 H250 V630 H400 V560 H550 V490 H690"></path>
+          <path class="arch-edge arch-edge--sage" d="M170 620 H310 V550 H460 V480 H610 V410 H700"></path>
+          <path class="arch-edge arch-edge--copper" d="M240 540 H380 V470 H530 V400 H660 V330 H740"></path>
+          <path class="arch-edge arch-edge--gold" d="M320 430 H440 V360 H560 V290 H660 V220 H720"></path>
+        </g>
       </svg>
     </div>
 
@@ -86,7 +73,7 @@
       var label = btn.querySelector('.theme-label');
       function sync() {
         var light = document.documentElement.getAttribute('data-theme') === 'light';
-        if (label) label.textContent = light ? 'Modo oscuro' : 'Modo claro';
+        if (label) label.textContent = light ? 'Modo Oscuro' : 'Modo Claro';
         btn.setAttribute('aria-label', light ? 'Activar modo oscuro' : 'Activar modo claro');
         btn.setAttribute('aria-pressed', String(light));
       }
