@@ -204,7 +204,7 @@
     try { ws = new WebSocket(wsUrl); } catch { scheduleReconnect(); return; }
 
     ws.onopen = () => {
-      setWsStatus(true, 'WS: conectado');
+      setWsStatus(true, 'WS: en vivo');
       logWsEvent({ type: 'conexion', evento: 'conexion', timestamp_utc: new Date().toISOString(), metricas: null });
       if (wsPingTimer) clearInterval(wsPingTimer);
       wsPingTimer = setInterval(() => {
@@ -223,7 +223,7 @@
       if (msg.type === 'pong') return;
       if (msg.error) console.error(msg.error);
       if (msg.metricas && !msg.error) applyMetricas(msg.metricas);
-      if (['snapshot_inicial', 'interaccion_creada', 'interaccion_actualizada', 'interaccion_eliminada', 'conexion'].includes(msg.type || msg.evento)) {
+      if (['conexion_inicial', 'interaccion_creada', 'interaccion_actualizada', 'interaccion_eliminada', 'conexion'].includes(msg.type || msg.evento)) {
         logWsEvent(msg);
       }
     };
@@ -253,7 +253,8 @@
       const data = await resp.json();
       if (data.error_firestore) console.error(data.error_firestore);
       renderHistoricos(data);
-      if (data.metricas_firestore && !data.error_firestore) applyMetricas(data.metricas_firestore);
+      const metricasHistoricas = data.metricas_tiempo_real || data.metricas_firestore;
+      if (metricasHistoricas && !data.error_firestore) applyMetricas(metricasHistoricas);
     } catch (err) {
       console.error('Error al cargar los históricos', err);
     }

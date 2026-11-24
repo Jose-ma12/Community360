@@ -303,6 +303,12 @@ def _calcular_longitud_texto(tipo: str, texto: str | None) -> int:
     return len(texto or "")
 
 
+def validar_usuario_en_d1(id_usuario: str) -> None:
+    res = ejecutar_d1("SELECT id_usuario FROM usuarios WHERE id_usuario = ? LIMIT 1", [id_usuario])
+    if not res.get("results"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="id_usuario no existe en Cloudflare D1 (usuarios)")
+
+
 def metricas_vacias() -> dict:
     return {
         "total_interacciones": 0,
@@ -489,9 +495,7 @@ async def crear_interaccion(payload: InteraccionBase, usuario=Depends(obtener_us
     if doc_ref.get().exists:
         raise HTTPException(status_code=409, detail="id_interaccion ya existe en Firestore")
 
-    res = ejecutar_d1("SELECT id_usuario FROM usuarios WHERE id_usuario = ? LIMIT 1", [payload.id_usuario])
-    if not res.get("results"):
-        raise HTTPException(status_code=400, detail="id_usuario no existe en Cloudflare D1 (usuarios)")
+    validar_usuario_en_d1(payload.id_usuario)
 
     data = payload.model_dump()
     if data["tipo"] == "reaccion":
@@ -524,6 +528,7 @@ async def actualizar_interaccion(id_interaccion: str, payload: InteraccionUpdate
         raise HTTPException(status_code=404, detail="Interacción no encontrada")
 
     actual = _normalizar_interaccion_doc(doc.to_dict() or {})
+    validar_usuario_en_d1(str(actual.get("id_usuario") or ""))
     cambios = payload.model_dump(exclude_unset=True)
     if not cambios:
         raise HTTPException(status_code=400, detail="No se proporcionaron campos para actualizar")
@@ -650,6 +655,7 @@ async def historico_dashboard(usuario=Depends(obtener_usuario_actual)):
         "riesgo_abandono": riesgo,
         "total_interacciones": metricas_firestore["total_interacciones"],
         "metricas_firestore": metricas_firestore,
+        "metricas_tiempo_real": metricas_firestore,
         "error_firestore": error_firestore,
         "privacidad": {
             "regla": "sin_datos_geo",
@@ -682,8 +688,8 @@ async def websocket_endpoint(websocket: WebSocket, token: str | None = Query(def
             print(error_metricas)
             metricas = metricas_vacias()
         await websocket.send_text(json.dumps(sanitizar_json({
-            "type": "snapshot_inicial",
-            "evento": "snapshot_inicial",
+            "type": "conexion_inicial",
+            "evento": "conexion_inicial",
             "timestamp_utc": utc_now_iso(),
             "metricas": metricas,
             "error": error_metricas,

@@ -62,7 +62,7 @@
 
       <div class="grid grid-2" style="margin-top:16px;">
         <article class="card">
-          <h3>Interacciones por canal</h3>
+          <h3>Interacciones por plataforma (canal)</h3>
           <div class="chart-wrap"><canvas id="chartCanal"></canvas></div>
         </article>
         <article class="card">
@@ -109,10 +109,10 @@
       </div>
 
       <div class="grid grid-kpi">
-        <article class="card kpi"><div class="label">Miembros registrados</div><div class="value" id="hTotalUsuarios">—</div><div class="formula">Tabla: usuarios</div></article>
-        <article class="card kpi"><div class="label">Ubicación autorizada</div><div class="value" id="hConConsent">—</div><div class="formula">consentimiento_datos = 1</div></article>
-        <article class="card kpi"><div class="label">Excluidos por privacidad</div><div class="value" id="hSinConsent">—</div><div class="formula">consentimiento_datos = 0</div></article>
-        <article class="card kpi"><div class="label">Interacciones en cuarentena</div><div class="value" id="hCuarentena">—</div><div class="formula">Tabla: interacciones_cuarentena</div></article>
+        <article class="card kpi"><div class="label">Miembros registrados</div><div class="value" id="hTotalUsuarios">1068</div><div class="formula">Tabla: usuarios</div></article>
+        <article class="card kpi"><div class="label">Ubicación autorizada</div><div class="value" id="hConConsent">897</div><div class="formula">consentimiento_datos = 1</div></article>
+        <article class="card kpi"><div class="label">Excluidos por privacidad</div><div class="value" id="hSinConsent">171</div><div class="formula">consentimiento_datos = 0</div></article>
+        <article class="card kpi"><div class="label">Interacciones en cuarentena</div><div class="value" id="hCuarentena">793</div><div class="formula">Tabla: interacciones_cuarentena</div></article>
       </div>
 
       <div class="banner" id="bannerPrivacidad">Verificación de privacidad: top ciudades calculado con INNER JOIN usuarios_ubicacion + usuarios WHERE consentimiento_datos = 1 (regla sin_datos_geo).</div>

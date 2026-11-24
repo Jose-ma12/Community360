@@ -49,8 +49,8 @@ main { padding: 24px 0 40px; }
 .kpi .value { font-size: 2rem; font-weight: 800; line-height: 1.1; margin-bottom: 8px; color: #f9fafb; }
 .kpi .formula { font-size: 0.82rem; color: #dbeafe; background: var(--panel-2); padding: 8px 10px; border-radius: 8px; overflow-wrap: anywhere; }
 .banner { padding: 14px 16px; border-radius: 12px; background: #052e2b; border: 1px solid #134e4a; color: #99f6e4; font-weight: 600; margin-bottom: 16px; }
-.chart-wrap { position: relative; height: 320px; width: 100%; }
-.chart-wrap canvas { width: 100% !important; height: 100% !important; }
+.chart-wrap { position: relative; height: 280px; width: 100%; }
+.chart-wrap canvas { width: 100% !important; height: 280px !important; }
 .heatmap { overflow-x: auto; }
 .heatmap table { width: 100%; border-collapse: separate; border-spacing: 4px; min-width: 560px; }
 .heatmap th, .heatmap td { text-align: center; padding: 8px; font-size: 0.82rem; }
@@ -84,6 +84,5 @@ table.data th { color: var(--muted); font-weight: 700; background: #111827; posi
   .topbar-inner { flex-direction: column; align-items: stretch; }
   .actions { justify-content: space-between; }
   .grid-kpi, .grid-2 { grid-template-columns: 1fr; }
-  .chart-wrap { height: 280px; }
   .section-header { flex-direction: column; align-items: stretch; }
 }

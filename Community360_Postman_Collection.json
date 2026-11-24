@@ -2,13 +2,14 @@
   "info": {
     "name": "Community360 API",
     "_postman_id": "b8f7d8d2-8c40-4bb4-a0db-0b7f2f0f2b01",
-    "description": "Colección Postman v2.1 para Community360 (Fases 3-6). Usa {{base_url}} y {{jwt_token}}.",
+    "description": "Colección Postman v2.1 para Community360 (Fases 3-6). Usa {{base_url}} y {{jwt_token}}. Las operaciones CRUD se ejecutan exclusivamente desde Postman.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     { "key": "base_url", "value": "http://127.0.0.1:8000" },
     { "key": "jwt_token", "value": "" },
-    { "key": "id_interaccion_test", "value": "I9001" }
+    { "key": "id_interaccion_test", "value": "I9001" },
+    { "key": "id_usuario_test", "value": "U000001" }
   ],
   "item": [
     {
@@ -22,6 +23,7 @@
               "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
               "const json = pm.response.json();",
               "pm.test('Token presente', function () { pm.expect(json.access_token).to.be.a('string').and.not.empty; });",
+              "pm.test('Token_type Bearer', function () { pm.expect(json.token_type).to.eql('Bearer'); });",
               "pm.collectionVariables.set('jwt_token', json.access_token);",
               "pm.test('jwt_token guardado', function () { pm.expect(pm.collectionVariables.get('jwt_token')).to.eql(json.access_token); });"
             ]
@@ -39,7 +41,44 @@
       }
     },
     {
-      "name": "2) GET Históricos Dashboard (D1)",
+      "name": "2) Verificar sesión",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+              "pm.test('Sesión válida', function () { pm.expect(pm.response.json().ok).to.eql(true); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
+        "url": { "raw": "{{base_url}}/api/auth/verify", "host": ["{{base_url}}"], "path": ["api", "auth", "verify"] }
+      }
+    },
+    {
+      "name": "3) GET Históricos Dashboard (D1 + Firestore)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+              "const json = pm.response.json();",
+              "pm.test('1068 usuarios reales', function () { pm.expect(json.resumen_usuarios.total_usuarios).to.eql(1068); });",
+              "pm.test('897 con consentimiento', function () { pm.expect(json.resumen_usuarios.con_consentimiento_geo).to.eql(897); });",
+              "pm.test('171 sin consentimiento', function () { pm.expect(json.resumen_usuarios.sin_consentimiento_geo).to.eql(171); });",
+              "pm.test('793 en cuarentena', function () { pm.expect(json.interacciones_cuarentena).to.eql(793); });",
+              "pm.test('Firestore cargado', function () { pm.expect(json.total_interacciones).to.be.above(0); pm.expect(json.metricas_tiempo_real).to.have.property('por_canal'); });"
+            ]
+          }
+        }
+      ],
       "request": {
         "method": "GET",
         "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
@@ -47,7 +86,39 @@
       }
     },
     {
-      "name": "3) POST Nueva interacción válida",
+      "name": "4) GET Lista de interacciones",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+              "pm.test('Lista devuelta', function () { pm.expect(pm.response.json().interacciones).to.be.an('array'); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
+        "url": { "raw": "{{base_url}}/api/interacciones", "host": ["{{base_url}}"], "path": ["api", "interacciones"] }
+      }
+    },
+    {
+      "name": "5) POST Nueva interacción válida",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 201', function () { pm.response.to.have.status(201); });",
+              "pm.test('Sin datos geo y regla de privacidad', function () { const j = pm.response.json(); pm.expect(j.auditoria.regla_privacidad).to.eql('sin_datos_geo'); pm.expect(j).to.not.have.property('latitud'); pm.expect(j).to.not.have.property('longitud'); });"
+            ]
+          }
+        }
+      ],
       "request": {
         "method": "POST",
         "header": [
@@ -56,13 +127,45 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"id_interaccion\": \"{{id_interaccion_test}}\",\n  \"id_usuario\": \"U000001\",\n  \"timestamp\": \"2026-11-23T20:15:00Z\",\n  \"canal\": \"Telegram\",\n  \"tipo\": \"mensaje\",\n  \"texto\": \"Prueba de integración Community360 desde Postman\",\n  \"tema\": \"Tecnología\",\n  \"sentimiento\": 0.85,\n  \"idioma\": \"es\",\n  \"dispositivo\": \"desktop\",\n  \"reacciones_recibidas\": 3,\n  \"etiquetas\": [\"prueba\", \"postman\"]\n}"
+          "raw": "{\n  \"id_interaccion\": \"{{id_interaccion_test}}\",\n  \"id_usuario\": \"{{id_usuario_test}}\",\n  \"timestamp\": \"2026-11-23T20:15:00Z\",\n  \"canal\": \"Telegram\",\n  \"tipo\": \"mensaje\",\n  \"texto\": \"Prueba de integración Community360 desde Postman\",\n  \"tema\": \"Tecnología\",\n  \"sentimiento\": 0.85,\n  \"idioma\": \"es\",\n  \"dispositivo\": \"desktop\",\n  \"reacciones_recibidas\": 3,\n  \"etiquetas\": [\"prueba\", \"postman\"]\n}"
         },
         "url": { "raw": "{{base_url}}/api/interacciones", "host": ["{{base_url}}"], "path": ["api", "interacciones"] }
       }
     },
     {
-      "name": "4) PUT Modificar interacción",
+      "name": "6) GET Interacción creada",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+              "pm.test('ID coincide', function () { pm.expect(pm.response.json().id_interaccion).to.eql(pm.collectionVariables.get('id_interaccion_test')); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
+        "url": { "raw": "{{base_url}}/api/interacciones/{{id_interaccion_test}}", "host": ["{{base_url}}"], "path": ["api", "interacciones", "{{id_interaccion_test}}"] }
+      }
+    },
+    {
+      "name": "7) PUT Modificar interacción",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+              "pm.test('Cambios aplicados', function () { pm.expect(pm.response.json().reacciones_recibidas).to.eql(5); });"
+            ]
+          }
+        }
+      ],
       "request": {
         "method": "PUT",
         "header": [
@@ -77,7 +180,19 @@
       }
     },
     {
-      "name": "5) DELETE Eliminar interacción",
+      "name": "8) DELETE Eliminar interacción",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+              "pm.test('Eliminación confirmada', function () { pm.expect(pm.response.json().ok).to.eql(true); });"
+            ]
+          }
+        }
+      ],
       "request": {
         "method": "DELETE",
         "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
@@ -85,7 +200,7 @@
       }
     },
     {
-      "name": "6) POST Error 400 (id_usuario inexistente)",
+      "name": "9) POST Error 400 (id_usuario inexistente)",
       "event": [
         {
           "listen": "test",
@@ -93,8 +208,7 @@
             "type": "text/javascript",
             "exec": [
               "pm.test('Status 400', function () { pm.response.to.have.status(400); });",
-              "const json = pm.response.json();",
-              "pm.test('Detalle de error presente', function () { pm.expect(json.detail).to.be.a('string'); });"
+              "pm.test('Detalle de error presente', function () { pm.expect(pm.response.json().detail).to.be.a('string'); });"
             ]
           }
         }
@@ -110,6 +224,26 @@
           "raw": "{\n  \"id_interaccion\": \"I9002\",\n  \"id_usuario\": \"U999999\",\n  \"timestamp\": \"2026-11-23T20:20:00Z\",\n  \"canal\": \"Discord\",\n  \"tipo\": \"mensaje\",\n  \"texto\": \"Debe fallar por integridad referencial\",\n  \"tema\": \"Prueba\",\n  \"sentimiento\": 0.1,\n  \"idioma\": \"es\",\n  \"dispositivo\": \"mobile\",\n  \"reacciones_recibidas\": 0,\n  \"etiquetas\": [\"error\", \"fk\"]\n}"
         },
         "url": { "raw": "{{base_url}}/api/interacciones", "host": ["{{base_url}}"], "path": ["api", "interacciones"] }
+      }
+    },
+    {
+      "name": "10) Cerrar sesión",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+              "pm.test('Sesión cerrada', function () { pm.expect(pm.response.json().ok).to.eql(true); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
+        "url": { "raw": "{{base_url}}/api/auth/logout", "host": ["{{base_url}}"], "path": ["api", "auth", "logout"] }
       }
     }
   ]
