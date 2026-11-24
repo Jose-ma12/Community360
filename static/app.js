@@ -126,22 +126,33 @@
     wsStatus.textContent = text;
   }
 
+  const METODO_POR_EVENTO = {
+    interaccion_creada: 'POST',
+    interaccion_actualizada: 'PUT',
+    interaccion_eliminada: 'DELETE'
+  };
+
   function logWsEvent(evt) {
     if (wsLog.querySelector('.empty')) wsLog.innerHTML = '';
     const item = document.createElement('div');
     item.className = 'log-item';
     const ts = evt.timestamp_utc || new Date().toISOString();
     const tipo = evt.evento || evt.type || 'evento';
+    const metodo = METODO_POR_EVENTO[tipo] || (/^(POST|PUT|DELETE)$/i.test(tipo) ? tipo.toUpperCase() : null);
     item.dataset.event = tipo;
-    const actor = evt.actor ? ` · ${evt.actor}` : '';
-    const detail = evt.interaccion?.id_interaccion ? ` · ${evt.interaccion.id_interaccion}` : '';
-    item.innerHTML = `<div class="meta"><span>${tipo}${actor}${detail}</span><span>${ts}</span></div><div>${summarizeEvent(evt)}</div>`;
+    const actor = evt.actor ? ` · ${escapeHtml(evt.actor)}` : '';
+    const detail = evt.interaccion?.id_interaccion ? ` · ${escapeHtml(evt.interaccion.id_interaccion)}` : '';
+    const badge = metodo
+      ? `<span class="method-badge" data-method="${metodo}">${metodo}</span>`
+      : `<span class="event-tag">${escapeHtml(tipo)}</span>`;
+    item.innerHTML = `<div class="meta"><span class="event-label">${badge}${actor}${detail}</span><span>${escapeHtml(ts)}</span></div><div>${summarizeEvent(evt)}</div>`;
     wsLog.prepend(item);
     while (wsLog.children.length > 30) wsLog.removeChild(wsLog.lastChild);
   }
 
   function summarizeEvent(evt) {
     if (evt.type === 'pong') return 'Pong recibido.';
+    if (evt.error) return `Error de métricas: ${escapeHtml(evt.error)}`;
     if (evt.metricas) {
       const m = evt.metricas;
       return `N=${m.total_interacciones} · S̄=${fmtNum(m.sentimiento_promedio)} · R̄=${fmtNum(m.reacciones_promedio)} · L̄=${fmtNum(m.longitud_media_texto)}`;
@@ -343,8 +354,11 @@
         return;
       }
       if (msg.type === 'pong') return;
-      if (msg.error) console.error(msg.error);
-      if (msg.metricas && !msg.error) applyMetricas(msg.metricas);
+      if (msg.error) {
+        console.error(msg.error);
+        logWsEvent({ type: 'error_metricas', evento: 'error_metricas', timestamp_utc: new Date().toISOString(), error: msg.error });
+      }
+      if (msg.metricas) applyMetricas(msg.metricas);
       if (['conexion_inicial', 'interaccion_creada', 'interaccion_actualizada', 'interaccion_eliminada', 'conexion'].includes(msg.type || msg.evento)) {
         logWsEvent(msg);
       }
@@ -376,7 +390,7 @@
       if (data.error_firestore) console.error(data.error_firestore);
       renderHistoricos(data);
       const metricasHistoricas = data.metricas_tiempo_real || data.metricas_firestore;
-      if (metricasHistoricas && !data.error_firestore) applyMetricas(metricasHistoricas);
+      if (metricasHistoricas) applyMetricas(metricasHistoricas);
     } catch (err) {
       console.error('Error al cargar los históricos', err);
     }
@@ -456,8 +470,7 @@
     syncThemeToggle();
     refreshChartThemes();
     connectWs();
-    await verifySession();
-    await loadHistoricos();
+    await Promise.allSettled([verifySession(), loadHistoricos()]);
   }
 
   init();
