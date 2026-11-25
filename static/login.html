@@ -104,10 +104,16 @@
   <script>
     (function () {
       const API_BASE = '';
-      const token = sessionStorage.getItem('c360_token');
+      // /dashboard manda aquí con ?sesion=expirada cuando no hay cookie de sesión válida:
+      // se limpia la sesión local para no rebotar entre login y dashboard.
+      const sesionExpirada = new URLSearchParams(window.location.search).has('sesion');
+      if (sesionExpirada) {
+        try { sessionStorage.removeItem('c360_token'); sessionStorage.removeItem('c360_user'); } catch (e) {}
+      }
+      const token = sesionExpirada ? null : sessionStorage.getItem('c360_token');
       if (token) {
         fetch(`${API_BASE}/api/auth/verify`, { headers: { 'Authorization': `Bearer ${token}` } })
-          .then(r => { if (r.ok) window.location.href = '/static/dashboard.html'; })
+          .then(r => { if (r.ok) window.location.href = '/dashboard'; })
           .catch(() => {});
       }
 
@@ -143,7 +149,7 @@
           }
           sessionStorage.setItem('c360_token', data.access_token);
           sessionStorage.setItem('c360_user', JSON.stringify(data.usuario || {}));
-          window.location.href = '/static/dashboard.html';
+          window.location.href = '/dashboard';
         } catch (err) {
           errorBox.textContent = err.message || 'Error de autenticación.';
           errorBox.classList.add('show');

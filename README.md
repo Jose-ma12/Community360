@@ -6,7 +6,8 @@ Plataforma de analítica comunitaria con backend FastAPI, autenticación JWT, Cl
 
 - `setup_auth_d1.py`: crea/verifica la tabla `usuarios_sistema` en Cloudflare D1 y registra el usuario administrador con contraseña cifrada con bcrypt.
 - `main.py`: API FastAPI con autenticación JWT, endpoints REST, WebSockets y servicio de archivos estáticos.
-- `static/`: frontend responsivo (`login.html`, `dashboard.html`, `app.js`, `styles.css`).
+- `static/`: frontend responsivo (`login.html`, `app.js`, `styles.css`).
+- `templates/dashboard.html`: página del dashboard, servida por la ruta protegida `GET /dashboard`.
 - `Community360_Postman_Collection.json`: colección Postman v2.1 para pruebas de autenticación y CRUD.
 
 ## Requisitos
@@ -42,7 +43,7 @@ uvicorn main:app --reload
 ```
 
 - Login: `http://127.0.0.1:8000/static/login.html`
-- Dashboard: `http://127.0.0.1:8000/static/dashboard.html`
+- Dashboard: `http://127.0.0.1:8000/dashboard`. La página (`templates/dashboard.html`) solo se entrega con una sesión válida: al iniciar sesión el servidor deja la cookie HttpOnly `c360_session`, que únicamente sirve para esta ruta; sin ella (o si el token expiró o fue revocado) redirige al login. La API y el WebSocket siguen usando el token Bearer. La antigua `/static/dashboard.html` redirige a `/dashboard`. En producción con HTTPS define `COOKIE_SECURE=true`.
 
 ## Endpoints principales
 

@@ -14,9 +14,9 @@ import firebase_admin
 import jwt
 import requests
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
@@ -60,6 +60,12 @@ CREATE TABLE IF NOT EXISTS tokens_revocados (
     revocado_utc TEXT NOT NULL
 )
 """
+
+# Cookie de sesión: SOLO sirve para entregar la página del dashboard (GET /dashboard).
+# La API y el WebSocket siguen usando el token Bearer, así que la cookie no abre la puerta a CSRF.
+COOKIE_SESION = "c360_session"
+COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"  # true cuando se sirva por HTTPS
+RUTA_DASHBOARD_HTML = os.path.join(BASE_DIR, "templates", "dashboard.html")
 
 security = HTTPBearer(auto_error=False)
 TOKENS_REVOCADOS: set[str] = set()  # caché en memoria; la fuente de verdad es la tabla tokens_revocados de D1
@@ -561,8 +567,32 @@ async def root():
     return RedirectResponse(url="/static/login.html")
 
 
+@app.get("/dashboard", include_in_schema=False)
+async def dashboard(request: Request):
+    """El HTML del dashboard solo se entrega con una sesión válida (cookie HttpOnly emitida en el login)."""
+    token = request.cookies.get(COOKIE_SESION)
+    if token:
+        try:
+            await run_in_threadpool(validar_sesion, token)
+            return FileResponse(
+                RUTA_DASHBOARD_HTML,
+                media_type="text/html",
+                headers={"Cache-Control": "no-store", "X-Frame-Options": "DENY"},
+            )
+        except HTTPException:
+            pass
+    redireccion = RedirectResponse(url="/static/login.html?sesion=expirada", status_code=status.HTTP_303_SEE_OTHER)
+    redireccion.delete_cookie(COOKIE_SESION, path="/")
+    return redireccion
+
+
+@app.get("/static/dashboard.html", include_in_schema=False)
+async def dashboard_ruta_antigua():
+    return RedirectResponse(url="/dashboard", status_code=status.HTTP_301_MOVED_PERMANENTLY)
+
+
 @app.post("/api/auth/login")
-def login(req: LoginRequest):
+def login(req: LoginRequest, request: Request, response: Response):
     res = ejecutar_d1(
         f"SELECT {', '.join(COLUMNAS_LOGIN_USUARIO)} FROM usuarios_sistema WHERE username = ? LIMIT 1",
         [req.username.strip()],
@@ -581,6 +611,15 @@ def login(req: LoginRequest):
     if not valida:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales inválidas")
     token = crear_jwt(user["username"], user.get("rol") or "administrador")
+    response.set_cookie(
+        COOKIE_SESION,
+        token,
+        max_age=int(os.getenv("JWT_EXPIRE_MINUTES", "180")) * 60,
+        httponly=True,  # JavaScript (y F12 → Console) no puede leerla
+        samesite="strict",
+        secure=COOKIE_SECURE,
+        path="/",
+    )
     return {
         "access_token": token,
         "token_type": "Bearer",
@@ -612,12 +651,14 @@ def _revocar_en_d1(payload: dict) -> bool:
 
 
 @app.post("/api/auth/logout")
-def logout(credentials: HTTPAuthorizationCredentials | None = Depends(security)):
+def logout(request: Request, response: Response, credentials: HTTPAuthorizationCredentials | None = Depends(security)):
     # Cerrar sesión solo necesita un token bien firmado: no depende de que el usuario siga activo.
-    if credentials is None or not credentials.credentials:
+    response.delete_cookie(COOKIE_SESION, path="/")
+    token = credentials.credentials if credentials and credentials.credentials else request.cookies.get(COOKIE_SESION)
+    if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Falta token Bearer")
     try:
-        payload = decodificar_jwt(credentials.credentials)
+        payload = decodificar_jwt(token)
     except HTTPException as exc:
         if exc.detail == "Token revocado":
             return {"ok": True, "mensaje": "La sesión ya estaba cerrada"}
