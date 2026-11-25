@@ -307,8 +307,15 @@ def etapa_7_exportar(maestros, ubicacion, metricas, cuarentena, validas, metrica
     maestros.to_csv(DIR_SALIDA / "usuarios_depurados.csv", index=False, encoding="utf-8")
     ubicacion.to_csv(DIR_SALIDA / "usuarios_ubicacion_depurados.csv", index=False, encoding="utf-8")
     metricas.to_csv(DIR_SALIDA / "usuarios_metricas_depurados.csv", index=False, encoding="utf-8")
-    cuarentena.to_csv(DIR_SALIDA / "interacciones_cuarentena.csv", index=False, encoding="utf-8")
-    validas.to_json(DIR_SALIDA / "interacciones_depuradas.json", orient="records", force_ascii=False, indent=2)
+    # Los archivos de interacciones no llevan país/estado/ciudad: en cuarentena no se puede comprobar
+    # el consentimiento del usuario, y en las válidas la ubicación autorizada ya vive en usuarios_ubicacion.
+    geo = ["pais", "estado", "ciudad", "latitud", "longitud", "zona_horaria"]
+    cuarentena.drop(columns=geo, errors="ignore").to_csv(
+        DIR_SALIDA / "interacciones_cuarentena.csv", index=False, encoding="utf-8"
+    )
+    validas.drop(columns=geo, errors="ignore").to_json(
+        DIR_SALIDA / "interacciones_depuradas.json", orient="records", force_ascii=False, indent=2
+    )
     (DIR_SALIDA / "metricas_tiempo_real.json").write_text(
         json.dumps(metricas_tiempo_real, ensure_ascii=False, indent=2), encoding="utf-8"
     )

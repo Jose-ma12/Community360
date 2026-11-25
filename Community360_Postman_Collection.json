@@ -14,6 +14,27 @@
   ],
   "item": [
     {
+      "name": "0) Health",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+              "const json = pm.response.json();",
+              "pm.test('D1 y Firestore ok', function () { pm.expect(json.d1).to.eql('ok'); pm.expect(json.firestore).to.eql('ok'); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{base_url}}/api/health", "host": ["{{base_url}}"], "path": ["api", "health"] }
+      }
+    },
+    {
       "name": "1) Login JWT",
       "event": [
         {
@@ -84,6 +105,84 @@
         "method": "GET",
         "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
         "url": { "raw": "{{base_url}}/api/historico/dashboard", "host": ["{{base_url}}"], "path": ["api", "historico", "dashboard"] }
+      }
+    },
+    {
+      "name": "3b) GET Históricos usuarios",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+              "pm.test('Lista paginada', function () { const j = pm.response.json(); pm.expect(j.usuarios).to.be.an('array'); pm.expect(j.usuarios.length).to.be.at.most(10); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
+        "url": {
+          "raw": "{{base_url}}/api/historico/usuarios?plataforma=Discord&estatus=activo&limit=10&offset=0",
+          "host": ["{{base_url}}"],
+          "path": ["api", "historico", "usuarios"],
+          "query": [
+            { "key": "plataforma", "value": "Discord" },
+            { "key": "estatus", "value": "activo" },
+            { "key": "limit", "value": "10" },
+            { "key": "offset", "value": "0" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "3c) GET Histórico de un usuario",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+              "pm.test('ID coincide', function () { pm.expect(pm.response.json().id_usuario).to.eql(pm.collectionVariables.get('id_usuario_test')); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
+        "url": { "raw": "{{base_url}}/api/historico/usuarios/{{id_usuario_test}}", "host": ["{{base_url}}"], "path": ["api", "historico", "usuarios", "{{id_usuario_test}}"] }
+      }
+    },
+    {
+      "name": "3d) GET Cuarentena",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+              "pm.test('793 en cuarentena', function () { pm.expect(pm.response.json().total).to.eql(793); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
+        "url": {
+          "raw": "{{base_url}}/api/historico/cuarentena?limit=10&offset=0",
+          "host": ["{{base_url}}"],
+          "path": ["api", "historico", "cuarentena"],
+          "query": [
+            { "key": "limit", "value": "10" },
+            { "key": "offset", "value": "0" }
+          ]
+        }
       }
     },
     {

@@ -46,13 +46,16 @@ uvicorn main:app --reload
 
 ## Endpoints principales
 
+### Estado del servicio
+- `GET /api/health`: sin autenticación; comprueba la conexión con D1 y Firestore. Responde 200 si ambos están disponibles y 503 si alguno falla, indicando cuál.
+
 ### Autenticación
 - `POST /api/auth/login`: valida credenciales en D1 y devuelve JWT.
 - `GET /api/auth/verify`: valida sesión activa.
-- `POST /api/auth/logout`: revoca el token activo en memoria.
+- `POST /api/auth/logout`: revoca el token activo. La revocación se guarda en la tabla `tokens_revocados` de D1 (identificada por el `jti` del token), así que el token sigue invalidado aunque se reinicie el servidor. Las revocaciones de tokens ya expirados se depuran automáticamente.
 
 ### Interacciones (Firestore)
-- `GET /api/interacciones`
+- `GET /api/interacciones`: filtros opcionales `canal`, `tema`, `tipo` e `id_usuario`; paginación con `limit` (1–500, por defecto 100) y `offset` (por defecto 0). La respuesta incluye `total`, `limit`, `offset` e `interacciones`.
 - `GET /api/interacciones/{id_interaccion}`
 - `POST /api/interacciones`
 - `PUT /api/interacciones/{id_interaccion}`
@@ -60,6 +63,9 @@ uvicorn main:app --reload
 
 ### Históricos (Cloudflare D1)
 - `GET /api/historico/dashboard`
+- `GET /api/historico/usuarios`: padrón consolidado (usuarios + métricas). Filtros opcionales `plataforma`, `interes`, `estatus` y `es_artista` (0 o 1); paginación con `limit` (1–200, por defecto 50) y `offset`. La ubicación (`pais`, `estado`, `ciudad`) solo aparece para usuarios con `consentimiento_datos = 1`.
+- `GET /api/historico/usuarios/{id_usuario}`: ficha de un usuario con la misma regla de privacidad; 400 si el id no cumple `^U\d+$`, 404 si no existe.
+- `GET /api/historico/cuarentena`: interacciones rechazadas por el ETL, con conteo `por_motivo`. Filtro opcional `motivo`; paginación con `limit` (1–200, por defecto 50) y `offset`.
 
 ### WebSocket
 - `WS /ws?token=<jwt>`: envía snapshot inicial y eventos de creación/actualización/eliminación con métricas recalculadas.

@@ -3,6 +3,9 @@ import json
 import math
 import os
 import re
+import uuid
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -13,12 +16,14 @@ import requests
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 from firebase_admin import credentials, firestore
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from google.api_core import exceptions as google_exceptions
+from google.api_core.retry import Retry
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from metricas import (
     BLOQUES_HEATMAP,
@@ -41,18 +46,52 @@ IDIOMA_RE = re.compile(r"^[a-z]{2}$")
 COLUMNAS_LOGIN_USUARIO = ("username", "nombre_completo", "password_hash", "rol", "activo")
 COLUMNAS_PERFIL_USUARIO = ("username", "nombre_completo", "rol", "activo")
 
-app = FastAPI(title="Community360 API", version="1.0.0")
+# Firestore: límites de espera para que un problema de red (proxy, antivirus, firewall)
+# devuelva un error 503 en segundos en lugar de dejar el servidor colgado.
+FIRESTORE_TIMEOUT = float(os.getenv("FIRESTORE_TIMEOUT_SECONDS", "15"))
+FIRESTORE_RETRY = Retry(initial=0.5, maximum=2.0, multiplier=2.0, timeout=FIRESTORE_TIMEOUT)
+FS = {"retry": FIRESTORE_RETRY, "timeout": FIRESTORE_TIMEOUT}
+
+ESQUEMA_TOKENS_REVOCADOS = """
+CREATE TABLE IF NOT EXISTS tokens_revocados (
+    jti TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    expira_epoch INTEGER NOT NULL,
+    revocado_utc TEXT NOT NULL
+)
+"""
+
+security = HTTPBearer(auto_error=False)
+TOKENS_REVOCADOS: set[str] = set()  # caché en memoria; la fuente de verdad es la tabla tokens_revocados de D1
+FIRESTORE_DB = None
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    try:
+        await run_in_threadpool(ejecutar_d1, ESQUEMA_TOKENS_REVOCADOS)
+    except Exception as exc:  # el servidor arranca aunque D1 no responda; se reintenta al cerrar sesión
+        print(f"[AVISO] No se pudo verificar la tabla tokens_revocados en D1: {exc}")
+    yield
+
+
+app = FastAPI(title="Community360 API", version="1.1.0", lifespan=lifespan)
+# La API usa encabezado Authorization (no cookies), así que no se necesitan credenciales CORS.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-security = HTTPBearer(auto_error=False)
-TOKENS_REVOCADOS: set[str] = set()
-FIRESTORE_DB = None
+
+@app.exception_handler(google_exceptions.GoogleAPIError)
+async def firestore_no_disponible(_request, exc):
+    return JSONResponse(
+        status_code=503,
+        content={"detail": f"Firestore no disponible: {type(exc).__name__}. Revisa la conexión a firestore.googleapis.com."},
+    )
 
 
 class GestorWebSockets:
@@ -61,7 +100,6 @@ class GestorWebSockets:
         self.lock = asyncio.Lock()
 
     async def conectar(self, websocket: WebSocket):
-        await websocket.accept()
         async with self.lock:
             self.activos.append(websocket)
 
@@ -105,13 +143,32 @@ def _validar_idioma(valor):
 
 
 def _validar_timestamp(valor):
+    """Acepta ISO-8601 con zona horaria y lo guarda siempre en UTC (AAAA-MM-DDTHH:MM:SSZ), igual que el ETL."""
     if valor is None:
         return valor
     try:
-        datetime.fromisoformat(valor.replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(valor.strip().replace("Z", "+00:00"))
     except Exception as exc:
-        raise ValueError("timestamp debe ser ISO-8601 válido") from exc
-    return valor
+        raise ValueError("timestamp debe ser ISO-8601 válido, p. ej. 2026-11-23T20:15:00Z") from exc
+    if dt.tzinfo is None:
+        raise ValueError("timestamp debe indicar la zona horaria (termina en Z para UTC)")
+    return dt.astimezone(timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _normalizar_etiquetas(valor):
+    if valor is None:
+        return valor
+    limpias = []
+    for etiqueta in valor:
+        etiqueta = str(etiqueta).strip().lower()
+        if etiqueta and etiqueta not in limpias:
+            limpias.append(etiqueta)
+    return limpias
+
+
+def _validar_texto_segun_tipo(tipo, texto):
+    if tipo != "reaccion" and not (texto or "").strip():
+        raise ValueError("texto es obligatorio cuando tipo no es 'reaccion'")
 
 
 def _validar_sentimiento(valor):
@@ -186,6 +243,16 @@ class InteraccionBase(BaseModel):
     def validar_timestamp(cls, v: str):
         return _validar_timestamp(v)
 
+    @field_validator("etiquetas")
+    @classmethod
+    def validar_etiquetas(cls, v: list[str]):
+        return _normalizar_etiquetas(v)
+
+    @model_validator(mode="after")
+    def validar_texto(self):
+        _validar_texto_segun_tipo(self.tipo, self.texto)
+        return self
+
 
 class InteraccionUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -237,6 +304,11 @@ class InteraccionUpdate(BaseModel):
     def validar_timestamp(cls, v: str | None):
         return _validar_timestamp(v)
 
+    @field_validator("etiquetas")
+    @classmethod
+    def validar_etiquetas(cls, v: list[str] | None):
+        return _normalizar_etiquetas(v)
+
 
 def _env(nombre: str, default: str | None = None) -> str:
     valor = os.getenv(nombre, default)
@@ -258,7 +330,10 @@ def ejecutar_d1(sql: str, params: list | None = None) -> dict:
     payload: dict[str, Any] = {"sql": sql}
     if params is not None:
         payload["params"] = params
-    resp = requests.post(url, headers=headers, json=payload, timeout=60)
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=30)
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=503, detail=f"Cloudflare D1 no disponible: {type(exc).__name__}") from exc
     if resp.status_code >= 400:
         raise HTTPException(status_code=502, detail=f"Error D1 HTTP {resp.status_code}: {resp.text[:200]}")
     data = resp.json()
@@ -289,6 +364,7 @@ def crear_jwt(username: str, rol: str) -> str:
         "rol": rol,
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(minutes=expire_minutes)).timestamp()),
+        "jti": uuid.uuid4().hex,
     }
     return jwt.encode(payload, secret, algorithm="HS256")
 
@@ -301,9 +377,44 @@ def decodificar_jwt(token: str) -> dict:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expirado")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido")
-    if token in TOKENS_REVOCADOS:
+    if not payload.get("sub") or not payload.get("jti"):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido; inicia sesión de nuevo")
+    if payload["jti"] in TOKENS_REVOCADOS:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token revocado")
     return payload
+
+
+def validar_sesion(token: str) -> dict:
+    """Valida firma, expiración, revocación (memoria + D1) y que el usuario siga activo."""
+    payload = decodificar_jwt(token)
+    sql = (
+        f"SELECT {', '.join(COLUMNAS_PERFIL_USUARIO)}, "
+        "EXISTS(SELECT 1 FROM tokens_revocados WHERE jti = ?) AS revocado "
+        "FROM usuarios_sistema WHERE username = ? LIMIT 1"
+    )
+    params = [payload["jti"], payload["sub"]]
+    try:
+        res = ejecutar_d1(sql, params)
+    except HTTPException as exc:
+        if "tokens_revocados" not in str(exc.detail):
+            raise
+        ejecutar_d1(ESQUEMA_TOKENS_REVOCADOS)  # la tabla no existía: se crea y se reintenta una vez
+        res = ejecutar_d1(sql, params)
+    rows = res.get("results", [])
+    if not rows or int(rows[0].get("activo", 0)) != 1:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario no autorizado")
+    if int(rows[0].get("revocado") or 0):
+        TOKENS_REVOCADOS.add(payload["jti"])
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token revocado")
+    fila = rows[0]
+    return {
+        "username": fila["username"],
+        "nombre_completo": fila.get("nombre_completo"),
+        "rol": fila.get("rol"),
+        "token": token,
+        "jti": payload["jti"],
+        "exp": payload.get("exp"),
+    }
 
 
 # Dependencia síncrona: FastAPI la ejecuta en un hilo aparte, así la consulta a D1
@@ -311,19 +422,7 @@ def decodificar_jwt(token: str) -> dict:
 def obtener_usuario_actual(credentials: HTTPAuthorizationCredentials | None = Depends(security)):
     if credentials is None or not credentials.credentials:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Falta token Bearer")
-    token = credentials.credentials
-    payload = decodificar_jwt(token)
-    username = payload.get("sub")
-    if not username:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido")
-    res = ejecutar_d1(
-        f"SELECT {', '.join(COLUMNAS_PERFIL_USUARIO)} FROM usuarios_sistema WHERE username = ? LIMIT 1",
-        [username],
-    )
-    rows = res.get("results", [])
-    if not rows or int(rows[0].get("activo", 0)) != 1:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario no autorizado")
-    return {"username": rows[0]["username"], "nombre_completo": rows[0].get("nombre_completo"), "rol": rows[0].get("rol"), "token": token}
+    return validar_sesion(credentials.credentials)
 
 
 def _normalizar_interaccion_doc(doc: dict) -> dict:
@@ -353,10 +452,10 @@ def metricas_vacias() -> dict:
 
 def recalcular_metricas_dinamicas(guardar_en_firestore: bool = True) -> dict:
     db = get_firestore()
-    interacciones = [_normalizar_interaccion_doc(d.to_dict() or {}) for d in db.collection("interacciones").stream()]
+    interacciones = [_normalizar_interaccion_doc(d.to_dict() or {}) for d in db.collection("interacciones").stream(**FS)]
     metricas = calcular_metricas(interacciones)
     if guardar_en_firestore:
-        db.collection("metricas_tiempo_real").document("resumen_global").set(metricas)
+        db.collection("metricas_tiempo_real").document("resumen_global").set(metricas, **FS)
     return metricas
 
 
@@ -381,7 +480,7 @@ def _quitar_campos_geo(data: dict) -> None:
 def _crear_interaccion_sync(payload: InteraccionBase, usuario: dict) -> dict:
     db = get_firestore()
     doc_ref = db.collection("interacciones").document(payload.id_interaccion)
-    if doc_ref.get().exists:
+    if doc_ref.get(**FS).exists:
         raise HTTPException(status_code=409, detail="id_interaccion ya existe en Firestore")
 
     validar_usuario_en_d1(payload.id_usuario)
@@ -397,7 +496,7 @@ def _crear_interaccion_sync(payload: InteraccionBase, usuario: dict) -> dict:
         "actor": usuario["username"],
     }
     _quitar_campos_geo(data)
-    doc_ref.set(data)
+    doc_ref.set(data, **FS)
     return data
 
 
@@ -414,7 +513,7 @@ def _actualizar_interaccion_sync(id_interaccion: str, payload: InteraccionUpdate
 
     db = get_firestore()
     doc_ref = db.collection("interacciones").document(id_interaccion)
-    doc = doc_ref.get()
+    doc = doc_ref.get(**FS)
     if not doc.exists:
         raise HTTPException(status_code=404, detail="Interacción no encontrada")
 
@@ -426,6 +525,10 @@ def _actualizar_interaccion_sync(id_interaccion: str, payload: InteraccionUpdate
 
     if actualizado["tipo"] == "reaccion":
         actualizado["texto"] = None
+    try:
+        _validar_texto_segun_tipo(actualizado["tipo"], actualizado.get("texto"))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     actualizado["longitud_texto"] = _calcular_longitud_texto(actualizado["tipo"], actualizado.get("texto"))
 
     auditoria_prev = actual.get("auditoria") or {}
@@ -438,18 +541,18 @@ def _actualizar_interaccion_sync(id_interaccion: str, payload: InteraccionUpdate
         "actor": usuario["username"],
     }
     _quitar_campos_geo(actualizado)
-    doc_ref.set(actualizado)
+    doc_ref.set(actualizado, **FS)
     return actualizado
 
 
 def _eliminar_interaccion_sync(id_interaccion: str) -> dict:
     db = get_firestore()
     doc_ref = db.collection("interacciones").document(id_interaccion)
-    doc = doc_ref.get()
+    doc = doc_ref.get(**FS)
     if not doc.exists:
         raise HTTPException(status_code=404, detail="Interacción no encontrada")
     data = _normalizar_interaccion_doc(doc.to_dict() or {})
-    doc_ref.delete()
+    doc_ref.delete(**FS)
     return {"id_interaccion": id_interaccion, **data}
 
 
@@ -494,28 +597,77 @@ async def verify(usuario=Depends(obtener_usuario_actual)):
     return {"ok": True, "usuario": {"username": usuario["username"], "nombre_completo": usuario["nombre_completo"], "rol": usuario["rol"]}}
 
 
+def _revocar_en_d1(payload: dict) -> bool:
+    try:
+        ejecutar_d1(ESQUEMA_TOKENS_REVOCADOS)
+        ejecutar_d1(
+            "INSERT OR IGNORE INTO tokens_revocados (jti, username, expira_epoch, revocado_utc) VALUES (?, ?, ?, ?)",
+            [payload["jti"], payload["sub"], int(payload.get("exp") or 0), utc_now_iso()],
+        )
+        ejecutar_d1("DELETE FROM tokens_revocados WHERE expira_epoch < ?", [int(datetime.now(timezone.utc).timestamp())])
+        return True
+    except Exception as exc:
+        print(f"[AVISO] No se pudo registrar la revocación en D1: {exc}")
+        return False
+
+
 @app.post("/api/auth/logout")
-async def logout(usuario=Depends(obtener_usuario_actual)):
-    TOKENS_REVOCADOS.add(usuario["token"])
-    return {"ok": True, "mensaje": "Sesión cerrada"}
+def logout(credentials: HTTPAuthorizationCredentials | None = Depends(security)):
+    # Cerrar sesión solo necesita un token bien firmado: no depende de que el usuario siga activo.
+    if credentials is None or not credentials.credentials:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Falta token Bearer")
+    try:
+        payload = decodificar_jwt(credentials.credentials)
+    except HTTPException as exc:
+        if exc.detail == "Token revocado":
+            return {"ok": True, "mensaje": "La sesión ya estaba cerrada"}
+        raise
+    TOKENS_REVOCADOS.add(payload["jti"])
+    persistida = _revocar_en_d1(payload)
+    return {"ok": True, "mensaje": "Sesión cerrada", "revocacion_persistida_en_d1": persistida}
+
+
+@app.get("/api/health")
+def health():
+    estado = {"api": "ok", "d1": "ok", "firestore": "ok"}
+    try:
+        ejecutar_d1("SELECT 1 AS ok")
+    except Exception as exc:
+        estado["d1"] = f"error: {getattr(exc, 'detail', exc)}"
+    try:
+        get_firestore().collection("metricas_tiempo_real").document("resumen_global").get(
+            retry=Retry(initial=0.5, maximum=1.0, multiplier=2.0, timeout=5), timeout=5
+        )
+    except Exception as exc:
+        estado["firestore"] = f"error: {type(exc).__name__}"
+    codigo = 200 if estado["d1"] == "ok" and estado["firestore"] == "ok" else 503
+    return JSONResponse(status_code=codigo, content=estado)
 
 
 @app.get("/api/interacciones")
-def listar_interacciones(canal: str | None = None, tema: str | None = None, usuario=Depends(obtener_usuario_actual)):
+def listar_interacciones(
+    canal: str | None = None,
+    tema: str | None = None,
+    tipo: str | None = None,
+    id_usuario: str | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    usuario=Depends(obtener_usuario_actual),
+):
     db = get_firestore()
-    docs = [_normalizar_interaccion_doc(d.to_dict() or {}) for d in db.collection("interacciones").stream()]
-    if canal:
-        docs = [d for d in docs if d.get("canal") == canal]
-    if tema:
-        docs = [d for d in docs if d.get("tema") == tema]
+    docs = [_normalizar_interaccion_doc(d.to_dict() or {}) for d in db.collection("interacciones").stream(**FS)]
+    filtros = {"canal": canal, "tema": tema, "tipo": tipo, "id_usuario": id_usuario}
+    for campo, valor in filtros.items():
+        if valor:
+            docs = [d for d in docs if d.get(campo) == valor]
     docs.sort(key=lambda x: str(x.get("timestamp", "")), reverse=True)
-    return {"total": len(docs), "interacciones": docs}
+    return {"total": len(docs), "limit": limit, "offset": offset, "interacciones": docs[offset : offset + limit]}
 
 
 @app.get("/api/interacciones/{id_interaccion}")
 def obtener_interaccion(id_interaccion: str, usuario=Depends(obtener_usuario_actual)):
     db = get_firestore()
-    doc = db.collection("interacciones").document(id_interaccion).get()
+    doc = db.collection("interacciones").document(id_interaccion).get(**FS)
     if not doc.exists:
         raise HTTPException(status_code=404, detail="Interacción no encontrada")
     return _normalizar_interaccion_doc(doc.to_dict() or {})
@@ -544,47 +696,51 @@ async def eliminar_interaccion(id_interaccion: str, usuario=Depends(obtener_usua
 
 @app.get("/api/historico/dashboard")
 def historico_dashboard(usuario=Depends(obtener_usuario_actual)):
-    total_usuarios = ejecutar_d1("SELECT COUNT(*) AS total FROM usuarios")["results"][0]["total"]
-    con_consent = ejecutar_d1("SELECT COUNT(*) AS total FROM usuarios WHERE consentimiento_datos = 1")["results"][0]["total"]
-    sin_consent = ejecutar_d1("SELECT COUNT(*) AS total FROM usuarios WHERE consentimiento_datos = 0")["results"][0]["total"]
-    total_artistas = ejecutar_d1("SELECT COUNT(*) AS total FROM usuarios WHERE es_artista = 1")["results"][0]["total"]
-    total_cuarentena = ejecutar_d1("SELECT COUNT(*) AS total FROM interacciones_cuarentena")["results"][0]["total"]
+    consultas = {
+        "total_usuarios": "SELECT COUNT(*) AS total FROM usuarios",
+        "con_consent": "SELECT COUNT(*) AS total FROM usuarios WHERE consentimiento_datos = 1",
+        "sin_consent": "SELECT COUNT(*) AS total FROM usuarios WHERE consentimiento_datos = 0",
+        "total_artistas": "SELECT COUNT(*) AS total FROM usuarios WHERE es_artista = 1",
+        "total_cuarentena": "SELECT COUNT(*) AS total FROM interacciones_cuarentena",
+        "por_plataforma": "SELECT plataforma_principal, COUNT(*) AS total FROM usuarios GROUP BY plataforma_principal ORDER BY total DESC",
+        "por_interes": "SELECT interes_principal, COUNT(*) AS total FROM usuarios GROUP BY interes_principal ORDER BY total DESC",
+        "por_rango_edad": "SELECT rango_edad, COUNT(*) AS total FROM usuarios GROUP BY rango_edad ORDER BY total DESC",
+        "top_ciudades": """
+            SELECT uu.ciudad, uu.estado, uu.pais, COUNT(*) AS total
+            FROM usuarios_ubicacion uu
+            INNER JOIN usuarios u ON u.id_usuario = uu.id_usuario
+            WHERE u.consentimiento_datos = 1
+            GROUP BY uu.ciudad, uu.estado, uu.pais
+            ORDER BY total DESC
+            LIMIT 10
+        """,
+        "riesgo": """
+            SELECT
+                CASE
+                    WHEN (mensajes_30d + reacciones_30d) <= 5 THEN 'Riesgo alto'
+                    WHEN (mensajes_30d + reacciones_30d) <= 20 THEN 'Riesgo medio'
+                    ELSE 'Activos'
+                END AS categoria,
+                COUNT(*) AS total
+            FROM usuarios_metricas
+            GROUP BY categoria
+        """,
+    }
+    # Las 10 consultas a D1 son independientes: se lanzan en paralelo para que el dashboard cargue rápido.
+    with ThreadPoolExecutor(max_workers=len(consultas)) as pool:
+        futuros = {clave: pool.submit(ejecutar_d1, sql) for clave, sql in consultas.items()}
+        r = {clave: futuro.result().get("results", []) for clave, futuro in futuros.items()}
 
-    por_plataforma = ejecutar_d1(
-        "SELECT plataforma_principal, COUNT(*) AS total FROM usuarios GROUP BY plataforma_principal ORDER BY total DESC"
-    ).get("results", [])
-    por_interes = ejecutar_d1(
-        "SELECT interes_principal, COUNT(*) AS total FROM usuarios GROUP BY interes_principal ORDER BY total DESC"
-    ).get("results", [])
-    por_rango_edad = ejecutar_d1(
-        "SELECT rango_edad, COUNT(*) AS total FROM usuarios GROUP BY rango_edad ORDER BY total DESC"
-    ).get("results", [])
-
-    top_ciudades = ejecutar_d1(
-        """
-        SELECT uu.ciudad, uu.estado, uu.pais, COUNT(*) AS total
-        FROM usuarios_ubicacion uu
-        INNER JOIN usuarios u ON u.id_usuario = uu.id_usuario
-        WHERE u.consentimiento_datos = 1
-        GROUP BY uu.ciudad, uu.estado, uu.pais
-        ORDER BY total DESC
-        LIMIT 10
-        """
-    ).get("results", [])
-
-    riesgo_rows = ejecutar_d1(
-        """
-        SELECT
-            CASE
-                WHEN (mensajes_30d + reacciones_30d) <= 5 THEN 'Riesgo alto'
-                WHEN (mensajes_30d + reacciones_30d) <= 20 THEN 'Riesgo medio'
-                ELSE 'Activos'
-            END AS categoria,
-            COUNT(*) AS total
-        FROM usuarios_metricas
-        GROUP BY categoria
-        """
-    ).get("results", [])
+    total_usuarios = r["total_usuarios"][0]["total"]
+    con_consent = r["con_consent"][0]["total"]
+    sin_consent = r["sin_consent"][0]["total"]
+    total_artistas = r["total_artistas"][0]["total"]
+    total_cuarentena = r["total_cuarentena"][0]["total"]
+    por_plataforma = r["por_plataforma"]
+    por_interes = r["por_interes"]
+    por_rango_edad = r["por_rango_edad"]
+    top_ciudades = r["top_ciudades"]
+    riesgo_rows = r["riesgo"]
     riesgo = {"Riesgo alto": 0, "Riesgo medio": 0, "Activos": 0}
     for r in riesgo_rows:
         riesgo[r["categoria"]] = r["total"]
@@ -621,18 +777,100 @@ def historico_dashboard(usuario=Depends(obtener_usuario_actual)):
     }
 
 
+SELECT_USUARIO_HISTORICO = """
+    SELECT u.id_usuario, u.alias, u.fecha_ingreso, u.rango_edad, u.especie_fursona,
+           u.interes_principal, u.plataforma_principal, u.es_artista, u.consentimiento_datos,
+           m.mensajes_30d, m.reacciones_30d, m.eventos_asistidos, m.comisiones_compradas,
+           m.sentimiento_promedio, m.ultima_actividad, m.estatus,
+           uu.pais, uu.estado, uu.ciudad
+    FROM usuarios u
+    LEFT JOIN usuarios_metricas m ON m.id_usuario = u.id_usuario
+    LEFT JOIN usuarios_ubicacion uu ON uu.id_usuario = u.id_usuario AND u.consentimiento_datos = 1
+"""
+
+
+@app.get("/api/historico/usuarios")
+def historico_usuarios(
+    plataforma: str | None = None,
+    interes: str | None = None,
+    estatus: str | None = None,
+    es_artista: int | None = Query(default=None, ge=0, le=1),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    usuario=Depends(obtener_usuario_actual),
+):
+    """Padrón consolidado desde D1. La ubicación solo aparece para usuarios con consentimiento."""
+    condiciones, params = [], []
+    for columna, valor in (
+        ("u.plataforma_principal", plataforma),
+        ("u.interes_principal", interes),
+        ("m.estatus", estatus),
+        ("u.es_artista", es_artista),
+    ):
+        if valor is not None and valor != "":
+            condiciones.append(f"{columna} = ?")
+            params.append(valor)
+    where = f" WHERE {' AND '.join(condiciones)}" if condiciones else ""
+    total = ejecutar_d1(
+        f"SELECT COUNT(*) AS total FROM usuarios u LEFT JOIN usuarios_metricas m ON m.id_usuario = u.id_usuario{where}",
+        params,
+    )["results"][0]["total"]
+    filas = ejecutar_d1(
+        f"{SELECT_USUARIO_HISTORICO}{where} ORDER BY u.id_usuario LIMIT ? OFFSET ?",
+        params + [limit, offset],
+    ).get("results", [])
+    return {"total": total, "limit": limit, "offset": offset, "usuarios": filas}
+
+
+@app.get("/api/historico/usuarios/{id_usuario}")
+def historico_usuario(id_usuario: str, usuario=Depends(obtener_usuario_actual)):
+    if not ID_USUARIO_RE.match(id_usuario):
+        raise HTTPException(status_code=400, detail="id_usuario debe cumplir ^U\\d+$")
+    filas = ejecutar_d1(f"{SELECT_USUARIO_HISTORICO} WHERE u.id_usuario = ? LIMIT 1", [id_usuario]).get("results", [])
+    if not filas:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado en D1")
+    return filas[0]
+
+
+@app.get("/api/historico/cuarentena")
+def historico_cuarentena(
+    motivo: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    usuario=Depends(obtener_usuario_actual),
+):
+    """Interacciones rechazadas por el ETL (no se eliminan: quedan auditables)."""
+    where, params = ("", [])
+    if motivo:
+        where, params = (" WHERE motivo_rechazo = ?", [motivo])
+    total = ejecutar_d1(f"SELECT COUNT(*) AS total FROM interacciones_cuarentena{where}", params)["results"][0]["total"]
+    por_motivo = ejecutar_d1(
+        "SELECT motivo_rechazo, COUNT(*) AS total FROM interacciones_cuarentena GROUP BY motivo_rechazo ORDER BY total DESC"
+    ).get("results", [])
+    filas = ejecutar_d1(
+        "SELECT id_interaccion, id_usuario_origen, timestamp_origen, canal, tipo, tema, motivo_rechazo "
+        f"FROM interacciones_cuarentena{where} ORDER BY timestamp_origen DESC LIMIT ? OFFSET ?",
+        params + [limit, offset],
+    ).get("results", [])
+    return {"total": total, "limit": limit, "offset": offset, "por_motivo": por_motivo, "registros": filas}
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, token: str | None = Query(default=None)):
+    # Se acepta primero para que el navegador reciba el código de cierre real
+    # (si se cierra antes de aceptar, el navegador solo ve 1006 y no sabe por qué).
+    await websocket.accept()
     if not token:
         await websocket.close(code=1008)
         return
     try:
-        decodificar_jwt(token)
-    except HTTPException:
-        await websocket.close(code=1008)
+        await run_in_threadpool(validar_sesion, token)
+    except HTTPException as exc:
+        # 1008 = token inválido o revocado (el frontend manda al login); 1013 = servicio no disponible, reintentar
+        await websocket.close(code=1008 if exc.status_code == 401 else 1013)
         return
     except Exception:
-        await websocket.close(code=1008)
+        await websocket.close(code=1013)
         return
 
     await gestor_ws.conectar(websocket)

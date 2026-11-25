@@ -50,3 +50,10 @@ CREATE TABLE IF NOT EXISTS interacciones_cuarentena (
 );
 
 CREATE INDEX IF NOT EXISTS idx_cuarentena_usuario ON interacciones_cuarentena (id_usuario_origen);
+
+CREATE TABLE IF NOT EXISTS tokens_revocados (
+    jti TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    expira_epoch INTEGER NOT NULL,
+    revocado_utc TEXT NOT NULL
+);

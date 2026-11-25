@@ -113,17 +113,25 @@
     return { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
   }
 
+  function limpiarSesionYSalir() {
+    manualLogout = true;
+    if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+    if (wsPingTimer) { clearInterval(wsPingTimer); wsPingTimer = null; }
+    if (ws) { try { ws.close(1000, 'logout'); } catch {} }
+    try {
+      sessionStorage.removeItem('c360_token');
+      sessionStorage.removeItem('c360_user');
+    } catch {}
+    window.location.replace('/static/login.html');
+  }
+
   async function apiFetch(path, options = {}) {
     const resp = await fetch(`${API_BASE}${path}`, {
       ...options,
       headers: { ...(options.headers || {}), ...authHeaders() }
     });
     if (resp.status === 401) {
-      try {
-        sessionStorage.removeItem('c360_token');
-        sessionStorage.removeItem('c360_user');
-      } catch {}
-      window.location.href = '/static/login.html';
+      limpiarSesionYSalir();
       throw new Error('No autorizado');
     }
     return resp;
@@ -139,15 +147,13 @@
   }
 
   if (logoutBtn) {
-    logoutBtn.addEventListener('click', async () => {
-      manualLogout = true;
-      try { await apiFetch('/api/auth/logout', { method: 'POST' }); } catch {}
+    logoutBtn.addEventListener('click', () => {
+      // Se avisa al servidor para revocar el token, pero sin esperar su respuesta:
+      // la sesión local se cierra de inmediato aunque D1 o Firestore tarden o fallen.
       try {
-        sessionStorage.removeItem('c360_token');
-        sessionStorage.removeItem('c360_user');
+        fetch(`${API_BASE}/api/auth/logout`, { method: 'POST', headers: authHeaders(), keepalive: true }).catch(() => {});
       } catch {}
-      if (ws) try { ws.close(); } catch {}
-      window.location.href = '/static/login.html';
+      limpiarSesionYSalir();
     });
   }
 
@@ -371,6 +377,7 @@
     try { ws = new WebSocket(wsUrl); } catch { scheduleReconnect(); return; }
 
     ws.onopen = () => {
+      wsIntentos = 0;
       setWsStatus(true, 'WS: en vivo');
       logWsEvent({ type: 'conexion', evento: 'conexion', timestamp_utc: new Date().toISOString(), metricas: null });
       if (wsPingTimer) clearInterval(wsPingTimer);
@@ -402,7 +409,9 @@
       setWsStatus(false, 'WS: desconectado');
       console.warn(`WebSocket cerrado (código ${ev.code})${ev.reason ? `: ${ev.reason}` : ''}`);
       if (wsPingTimer) { clearInterval(wsPingTimer); wsPingTimer = null; }
-      if (!manualLogout) scheduleReconnect();
+      if (manualLogout) return;
+      if (ev.code === 1008) { limpiarSesionYSalir(); return; }  // token inválido o revocado
+      scheduleReconnect();
     };
 
     ws.onerror = () => {
@@ -411,9 +420,13 @@
     };
   }
 
+  let wsIntentos = 0;
   function scheduleReconnect() {
-    if (wsReconnectTimer) return;
-    wsReconnectTimer = setTimeout(() => { wsReconnectTimer = null; connectWs(); }, 3000);
+    if (wsReconnectTimer || manualLogout) return;
+    const espera = Math.min(30000, 3000 * 2 ** Math.min(wsIntentos, 4));  // 3 s, 6 s, 12 s, 24 s, 30 s
+    wsIntentos += 1;
+    setWsStatus(false, `WS: reconectando en ${Math.round(espera / 1000)} s`);
+    wsReconnectTimer = setTimeout(() => { wsReconnectTimer = null; connectWs(); }, espera);
   }
 
   async function loadHistoricos() {
