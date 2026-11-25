@@ -7,6 +7,7 @@
   },
   "variable": [
     { "key": "base_url", "value": "http://127.0.0.1:8000" },
+    { "key": "admin_password", "value": "" },
     { "key": "jwt_token", "value": "" },
     { "key": "id_interaccion_test", "value": "I9001" },
     { "key": "id_usuario_test", "value": "U000001" }
@@ -35,7 +36,7 @@
         "header": [{ "key": "Content-Type", "value": "application/json" }],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"username\": \"admin_c360\",\n  \"password\": \"Community360#2026\"\n}"
+          "raw": "{\n  \"username\": \"admin_c360\",\n  \"password\": \"{{admin_password}}\"\n}"
         },
         "url": { "raw": "{{base_url}}/api/auth/login", "host": ["{{base_url}}"], "path": ["api", "auth", "login"] }
       }
@@ -127,7 +128,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"id_interaccion\": \"{{id_interaccion_test}}\",\n  \"id_usuario\": \"{{id_usuario_test}}\",\n  \"timestamp\": \"2026-11-23T20:15:00Z\",\n  \"canal\": \"Telegram\",\n  \"tipo\": \"mensaje\",\n  \"texto\": \"Prueba de integración Community360 desde Postman\",\n  \"tema\": \"Tecnología\",\n  \"sentimiento\": 0.85,\n  \"idioma\": \"es\",\n  \"dispositivo\": \"desktop\",\n  \"reacciones_recibidas\": 3,\n  \"etiquetas\": [\"prueba\", \"postman\"]\n}"
+          "raw": "{\n  \"id_interaccion\": \"{{id_interaccion_test}}\",\n  \"id_usuario\": \"{{id_usuario_test}}\",\n  \"timestamp\": \"2026-11-23T20:15:00Z\",\n  \"canal\": \"Telegram\",\n  \"tipo\": \"mensaje\",\n  \"texto\": \"Prueba de integración Community360 desde Postman\",\n  \"tema\": \"eventos_convenciones\",\n  \"sentimiento\": 0.85,\n  \"idioma\": \"es\",\n  \"dispositivo\": \"Escritorio\",\n  \"reacciones_recibidas\": 3,\n  \"etiquetas\": [\"prueba\", \"postman\"]\n}"
         },
         "url": { "raw": "{{base_url}}/api/interacciones", "host": ["{{base_url}}"], "path": ["api", "interacciones"] }
       }
@@ -221,7 +222,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"id_interaccion\": \"I9002\",\n  \"id_usuario\": \"U999999\",\n  \"timestamp\": \"2026-11-23T20:20:00Z\",\n  \"canal\": \"Discord\",\n  \"tipo\": \"mensaje\",\n  \"texto\": \"Debe fallar por integridad referencial\",\n  \"tema\": \"Prueba\",\n  \"sentimiento\": 0.1,\n  \"idioma\": \"es\",\n  \"dispositivo\": \"mobile\",\n  \"reacciones_recibidas\": 0,\n  \"etiquetas\": [\"error\", \"fk\"]\n}"
+          "raw": "{\n  \"id_interaccion\": \"I9002\",\n  \"id_usuario\": \"U999999\",\n  \"timestamp\": \"2026-11-23T20:20:00Z\",\n  \"canal\": \"Discord\",\n  \"tipo\": \"mensaje\",\n  \"texto\": \"Debe fallar por integridad referencial\",\n  \"tema\": \"videojuegos\",\n  \"sentimiento\": 0.1,\n  \"idioma\": \"es\",\n  \"dispositivo\": \"Android\",\n  \"reacciones_recibidas\": 0,\n  \"etiquetas\": [\"error\", \"fk\"]\n}"
         },
         "url": { "raw": "{{base_url}}/api/interacciones", "host": ["{{base_url}}"], "path": ["api", "interacciones"] }
       }

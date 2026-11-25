@@ -16,18 +16,28 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from firebase_admin import credentials, firestore
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from metricas import (
+    BLOQUES_HEATMAP,
+    CANALES_VALIDOS,
+    DIAS_HEATMAP,
+    DISPOSITIVOS_VALIDOS,
+    TEMAS_VALIDOS,
+    TIPOS_VALIDOS,
+    calcular_metricas,
+    sanitizar_json,
+    utc_now_iso,
+)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
-CANALES_VALIDOS = ["Telegram", "Facebook", "Instagram", "TikTok", "Twitter/X", "Discord"]
-TIPOS_VALIDOS = ["mensaje", "comentario", "encuesta", "reaccion"]
-DIAS_HEATMAP = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
-BLOQUES_HEATMAP = ["00-04", "04-08", "08-12", "12-16", "16-20", "20-24"]
 ID_INTERACCION_RE = re.compile(r"^I\d+$")
 ID_USUARIO_RE = re.compile(r"^U\d+$")
+IDIOMA_RE = re.compile(r"^[a-z]{2}$")
 COLUMNAS_LOGIN_USUARIO = ("username", "nombre_completo", "password_hash", "rol", "activo")
 COLUMNAS_PERFIL_USUARIO = ("username", "nombre_completo", "rol", "activo")
 
@@ -82,6 +92,34 @@ class LoginRequest(BaseModel):
     password: str = Field(..., min_length=1)
 
 
+def _validar_enum(valor, permitidos, campo):
+    if valor is not None and valor not in permitidos:
+        raise ValueError(f"{campo} inválido. Permitidos: {permitidos}")
+    return valor
+
+
+def _validar_idioma(valor):
+    if valor is not None and not IDIOMA_RE.match(valor):
+        raise ValueError("idioma debe ser un código ISO-639-1 de dos letras minúsculas (p. ej. 'es')")
+    return valor
+
+
+def _validar_timestamp(valor):
+    if valor is None:
+        return valor
+    try:
+        datetime.fromisoformat(valor.replace("Z", "+00:00"))
+    except Exception as exc:
+        raise ValueError("timestamp debe ser ISO-8601 válido") from exc
+    return valor
+
+
+def _validar_sentimiento(valor):
+    if valor is not None and not -1.0 <= float(valor) <= 1.0:
+        raise ValueError("sentimiento debe estar en [-1.0, 1.0]")
+    return float(valor) if valor is not None else valor
+
+
 class InteraccionBase(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -116,35 +154,37 @@ class InteraccionBase(BaseModel):
     @field_validator("canal")
     @classmethod
     def validar_canal(cls, v: str):
-        if v not in CANALES_VALIDOS:
-            raise ValueError(f"canal inválido. Permitidos: {CANALES_VALIDOS}")
-        return v
+        return _validar_enum(v, CANALES_VALIDOS, "canal")
 
     @field_validator("tipo")
     @classmethod
     def validar_tipo(cls, v: str):
-        if v not in TIPOS_VALIDOS:
-            raise ValueError(f"tipo inválido. Permitidos: {TIPOS_VALIDOS}")
-        return v
+        return _validar_enum(v, TIPOS_VALIDOS, "tipo")
+
+    @field_validator("tema")
+    @classmethod
+    def validar_tema(cls, v: str):
+        return _validar_enum(v, TEMAS_VALIDOS, "tema")
+
+    @field_validator("dispositivo")
+    @classmethod
+    def validar_dispositivo(cls, v: str):
+        return _validar_enum(v, DISPOSITIVOS_VALIDOS, "dispositivo")
+
+    @field_validator("idioma")
+    @classmethod
+    def validar_idioma(cls, v: str):
+        return _validar_idioma(v)
 
     @field_validator("sentimiento")
     @classmethod
     def validar_sentimiento(cls, v: float):
-        if not -1.0 <= float(v) <= 1.0:
-            raise ValueError("sentimiento debe estar en [-1.0, 1.0]")
-        return float(v)
+        return _validar_sentimiento(v)
 
     @field_validator("timestamp")
     @classmethod
     def validar_timestamp(cls, v: str):
-        try:
-            if v.endswith("Z"):
-                datetime.fromisoformat(v.replace("Z", "+00:00"))
-            else:
-                datetime.fromisoformat(v)
-        except Exception as exc:
-            raise ValueError("timestamp debe ser ISO-8601 válido") from exc
-        return v
+        return _validar_timestamp(v)
 
 
 class InteraccionUpdate(BaseModel):
@@ -165,37 +205,37 @@ class InteraccionUpdate(BaseModel):
     @field_validator("canal")
     @classmethod
     def validar_canal(cls, v: str | None):
-        if v is not None and v not in CANALES_VALIDOS:
-            raise ValueError(f"canal inválido. Permitidos: {CANALES_VALIDOS}")
-        return v
+        return _validar_enum(v, CANALES_VALIDOS, "canal")
 
     @field_validator("tipo")
     @classmethod
     def validar_tipo(cls, v: str | None):
-        if v is not None and v not in TIPOS_VALIDOS:
-            raise ValueError(f"tipo inválido. Permitidos: {TIPOS_VALIDOS}")
-        return v
+        return _validar_enum(v, TIPOS_VALIDOS, "tipo")
+
+    @field_validator("tema")
+    @classmethod
+    def validar_tema(cls, v: str | None):
+        return _validar_enum(v, TEMAS_VALIDOS, "tema")
+
+    @field_validator("dispositivo")
+    @classmethod
+    def validar_dispositivo(cls, v: str | None):
+        return _validar_enum(v, DISPOSITIVOS_VALIDOS, "dispositivo")
+
+    @field_validator("idioma")
+    @classmethod
+    def validar_idioma(cls, v: str | None):
+        return _validar_idioma(v)
 
     @field_validator("sentimiento")
     @classmethod
     def validar_sentimiento(cls, v: float | None):
-        if v is not None and not -1.0 <= float(v) <= 1.0:
-            raise ValueError("sentimiento debe estar en [-1.0, 1.0]")
-        return float(v) if v is not None else v
+        return _validar_sentimiento(v)
 
     @field_validator("timestamp")
     @classmethod
     def validar_timestamp(cls, v: str | None):
-        if v is None:
-            return v
-        try:
-            if v.endswith("Z"):
-                datetime.fromisoformat(v.replace("Z", "+00:00"))
-            else:
-                datetime.fromisoformat(v)
-        except Exception as exc:
-            raise ValueError("timestamp debe ser ISO-8601 válido") from exc
-        return v
+        return _validar_timestamp(v)
 
 
 def _env(nombre: str, default: str | None = None) -> str:
@@ -240,13 +280,9 @@ def get_firestore():
     return FIRESTORE_DB
 
 
-def utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
 def crear_jwt(username: str, rol: str) -> str:
     secret = _env("JWT_SECRET_KEY")
-    expire_minutes = int(os.getenv("JWT_EXPIRE_MINUTES", "480"))
+    expire_minutes = int(os.getenv("JWT_EXPIRE_MINUTES", "180"))
     now = datetime.now(timezone.utc)
     payload = {
         "sub": username,
@@ -270,7 +306,9 @@ def decodificar_jwt(token: str) -> dict:
     return payload
 
 
-async def obtener_usuario_actual(credentials: HTTPAuthorizationCredentials | None = Depends(security)):
+# Dependencia síncrona: FastAPI la ejecuta en un hilo aparte, así la consulta a D1
+# no congela el servidor (ni los WebSockets) mientras espera la respuesta.
+def obtener_usuario_actual(credentials: HTTPAuthorizationCredentials | None = Depends(security)):
     if credentials is None or not credentials.credentials:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Falta token Bearer")
     token = credentials.credentials
@@ -310,109 +348,20 @@ def validar_usuario_en_d1(id_usuario: str) -> None:
 
 
 def metricas_vacias() -> dict:
-    return {
-        "total_interacciones": 0,
-        "sentimiento_promedio": 0.0,
-        "reacciones_promedio": 0.0,
-        "longitud_media_texto": 0.0,
-        "total_textos": 0,
-        "por_canal": {c: 0 for c in CANALES_VALIDOS},
-        "por_tema": {},
-        "heatmap_actividad": {dia: {bloque: 0 for bloque in BLOQUES_HEATMAP} for dia in DIAS_HEATMAP},
-        "ultimas_interacciones": [],
-        "ultima_actualizacion": utc_now_iso(),
-    }
-
-
-def sanitizar_json(valor: Any) -> Any:
-    if isinstance(valor, float):
-        return valor if math.isfinite(valor) else None
-    if isinstance(valor, dict):
-        return {clave: sanitizar_json(item) for clave, item in valor.items()}
-    if isinstance(valor, (list, tuple)):
-        return [sanitizar_json(item) for item in valor]
-    return valor
+    return calcular_metricas([])
 
 
 def recalcular_metricas_dinamicas(guardar_en_firestore: bool = True) -> dict:
     db = get_firestore()
-    docs = list(db.collection("interacciones").stream())
-    interacciones = [_normalizar_interaccion_doc(d.to_dict() or {}) for d in docs]
-
-    n = len(interacciones)
-    sentimientos = [float(i.get("sentimiento", 0) or 0) for i in interacciones]
-    reacciones = [int(i.get("reacciones_recibidas", 0) or 0) for i in interacciones]
-    textos = [i for i in interacciones if i.get("tipo") != "reaccion"]
-    n_txt = len(textos)
-    longitudes = [len((i.get("texto") or "")) for i in textos]
-
-    por_canal = {c: 0 for c in CANALES_VALIDOS}
-    por_tema: dict[str, int] = {}
-    heatmap = {dia: {bloque: 0 for bloque in BLOQUES_HEATMAP} for dia in DIAS_HEATMAP}
-
-    for i in interacciones:
-        canal = i.get("canal")
-        tema = i.get("tema") or "Sin tema"
-        if canal in por_canal:
-            por_canal[canal] += 1
-        else:
-            por_canal[canal] = por_canal.get(canal, 0) + 1
-        por_tema[tema] = por_tema.get(tema, 0) + 1
-
-        ts = i.get("timestamp")
-        if ts:
-            try:
-                dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
-                dt_utc = dt.astimezone(timezone.utc)
-                dia = DIAS_HEATMAP[dt_utc.weekday()]
-                bloque_idx = min(dt_utc.hour // 4, 5)
-                bloque = BLOQUES_HEATMAP[bloque_idx]
-                heatmap[dia][bloque] += 1
-            except Exception:
-                pass
-
-    ultimas = sorted(interacciones, key=lambda x: str(x.get("timestamp", "")), reverse=True)[:10]
-    ultimas_limpias = []
-    for i in ultimas:
-        ultimas_limpias.append({
-            "id_interaccion": i.get("id_interaccion"),
-            "id_usuario": i.get("id_usuario"),
-            "timestamp": i.get("timestamp"),
-            "canal": i.get("canal"),
-            "tipo": i.get("tipo"),
-            "tema": i.get("tema"),
-            "sentimiento": i.get("sentimiento"),
-            "reacciones_recibidas": i.get("reacciones_recibidas"),
-            "texto": i.get("texto"),
-        })
-
-    metricas = {
-        "total_interacciones": n,
-        "sentimiento_promedio": round(sum(sentimientos) / n, 6) if n else 0.0,
-        "reacciones_promedio": round(sum(reacciones) / n, 6) if n else 0.0,
-        "longitud_media_texto": round(sum(longitudes) / n_txt, 6) if n_txt else 0.0,
-        "total_textos": n_txt,
-        "por_canal": por_canal,
-        "por_tema": por_tema,
-        "heatmap_actividad": heatmap,
-        "ultimas_interacciones": ultimas_limpias,
-        "ultima_actualizacion": utc_now_iso(),
-        "formulas": {
-            "total_interacciones": "N",
-            "sentimiento_promedio": "S̄ = (1/N) * Σ s_i",
-            "reacciones_promedio": "R̄ = (1/N) * Σ r_i",
-            "longitud_media_texto": "L̄ = (1/N_txt) * Σ len(texto_i), excluyendo reacciones",
-        },
-    }
-
-    metricas = sanitizar_json(metricas)
+    interacciones = [_normalizar_interaccion_doc(d.to_dict() or {}) for d in db.collection("interacciones").stream()]
+    metricas = calcular_metricas(interacciones)
     if guardar_en_firestore:
         db.collection("metricas_tiempo_real").document("resumen_global").set(metricas)
     return metricas
 
 
 async def emitir_evento_interaccion(evento: str, interaccion: dict | None, actor: str):
-    metricas = recalcular_metricas_dinamicas(guardar_en_firestore=True)
+    metricas = await run_in_threadpool(recalcular_metricas_dinamicas, True)
     payload = {
         "type": evento,
         "evento": evento,
@@ -424,13 +373,93 @@ async def emitir_evento_interaccion(evento: str, interaccion: dict | None, actor
     await gestor_ws.broadcast(payload)
 
 
+def _quitar_campos_geo(data: dict) -> None:
+    for k in ["pais", "estado", "ciudad", "latitud", "longitud", "zona_horaria"]:
+        data.pop(k, None)
+
+
+def _crear_interaccion_sync(payload: InteraccionBase, usuario: dict) -> dict:
+    db = get_firestore()
+    doc_ref = db.collection("interacciones").document(payload.id_interaccion)
+    if doc_ref.get().exists:
+        raise HTTPException(status_code=409, detail="id_interaccion ya existe en Firestore")
+
+    validar_usuario_en_d1(payload.id_usuario)
+
+    data = payload.model_dump()
+    if data["tipo"] == "reaccion":
+        data["texto"] = None
+    data["longitud_texto"] = _calcular_longitud_texto(data["tipo"], data.get("texto"))
+    data["auditoria"] = {
+        "origen": "api_rest_postman",
+        "fecha_carga_utc": utc_now_iso(),
+        "regla_privacidad": "sin_datos_geo",
+        "actor": usuario["username"],
+    }
+    _quitar_campos_geo(data)
+    doc_ref.set(data)
+    return data
+
+
+def _actualizar_interaccion_sync(id_interaccion: str, payload: InteraccionUpdate, usuario: dict) -> dict:
+    cambios = payload.model_dump(exclude_unset=True)
+    if not cambios:
+        raise HTTPException(status_code=400, detail="No se proporcionaron campos para actualizar")
+    obligatorios = ["timestamp", "canal", "tipo", "tema", "sentimiento", "idioma", "dispositivo", "reacciones_recibidas"]
+    nulos = [c for c in obligatorios if c in cambios and cambios[c] is None]
+    if nulos:
+        raise HTTPException(status_code=400, detail=f"Estos campos no pueden ser null: {', '.join(nulos)}")
+    if "etiquetas" in cambios and cambios["etiquetas"] is None:
+        cambios["etiquetas"] = []
+
+    db = get_firestore()
+    doc_ref = db.collection("interacciones").document(id_interaccion)
+    doc = doc_ref.get()
+    if not doc.exists:
+        raise HTTPException(status_code=404, detail="Interacción no encontrada")
+
+    actual = _normalizar_interaccion_doc(doc.to_dict() or {})
+    validar_usuario_en_d1(str(actual.get("id_usuario") or ""))
+    actualizado = {**actual, **cambios}
+    actualizado["id_interaccion"] = actual.get("id_interaccion", id_interaccion)
+    actualizado["id_usuario"] = actual.get("id_usuario")
+
+    if actualizado["tipo"] == "reaccion":
+        actualizado["texto"] = None
+    actualizado["longitud_texto"] = _calcular_longitud_texto(actualizado["tipo"], actualizado.get("texto"))
+
+    auditoria_prev = actual.get("auditoria") or {}
+    actualizado["auditoria"] = {
+        **auditoria_prev,
+        "origen": auditoria_prev.get("origen", "api_rest_postman"),
+        "fecha_carga_utc": auditoria_prev.get("fecha_carga_utc", utc_now_iso()),
+        "fecha_actualizacion_utc": utc_now_iso(),
+        "regla_privacidad": "sin_datos_geo",
+        "actor": usuario["username"],
+    }
+    _quitar_campos_geo(actualizado)
+    doc_ref.set(actualizado)
+    return actualizado
+
+
+def _eliminar_interaccion_sync(id_interaccion: str) -> dict:
+    db = get_firestore()
+    doc_ref = db.collection("interacciones").document(id_interaccion)
+    doc = doc_ref.get()
+    if not doc.exists:
+        raise HTTPException(status_code=404, detail="Interacción no encontrada")
+    data = _normalizar_interaccion_doc(doc.to_dict() or {})
+    doc_ref.delete()
+    return {"id_interaccion": id_interaccion, **data}
+
+
 @app.get("/")
 async def root():
     return RedirectResponse(url="/static/login.html")
 
 
 @app.post("/api/auth/login")
-async def login(req: LoginRequest):
+def login(req: LoginRequest):
     res = ejecutar_d1(
         f"SELECT {', '.join(COLUMNAS_LOGIN_USUARIO)} FROM usuarios_sistema WHERE username = ? LIMIT 1",
         [req.username.strip()],
@@ -442,9 +471,13 @@ async def login(req: LoginRequest):
     if int(user.get("activo", 0)) != 1:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario inactivo")
     password_hash = (user.get("password_hash") or "").encode("utf-8")
-    if not bcrypt.checkpw(req.password.encode("utf-8"), password_hash):
+    try:
+        valida = bcrypt.checkpw(req.password.encode("utf-8"), password_hash)
+    except ValueError:
+        valida = False
+    if not valida:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales inválidas")
-    token = crear_jwt(user["username"], user.get("rol") or "admin")
+    token = crear_jwt(user["username"], user.get("rol") or "administrador")
     return {
         "access_token": token,
         "token_type": "Bearer",
@@ -468,7 +501,7 @@ async def logout(usuario=Depends(obtener_usuario_actual)):
 
 
 @app.get("/api/interacciones")
-async def listar_interacciones(canal: str | None = None, tema: str | None = None, usuario=Depends(obtener_usuario_actual)):
+def listar_interacciones(canal: str | None = None, tema: str | None = None, usuario=Depends(obtener_usuario_actual)):
     db = get_firestore()
     docs = [_normalizar_interaccion_doc(d.to_dict() or {}) for d in db.collection("interacciones").stream()]
     if canal:
@@ -480,7 +513,7 @@ async def listar_interacciones(canal: str | None = None, tema: str | None = None
 
 
 @app.get("/api/interacciones/{id_interaccion}")
-async def obtener_interaccion(id_interaccion: str, usuario=Depends(obtener_usuario_actual)):
+def obtener_interaccion(id_interaccion: str, usuario=Depends(obtener_usuario_actual)):
     db = get_firestore()
     doc = db.collection("interacciones").document(id_interaccion).get()
     if not doc.exists:
@@ -490,103 +523,27 @@ async def obtener_interaccion(id_interaccion: str, usuario=Depends(obtener_usuar
 
 @app.post("/api/interacciones", status_code=status.HTTP_201_CREATED)
 async def crear_interaccion(payload: InteraccionBase, usuario=Depends(obtener_usuario_actual)):
-    db = get_firestore()
-    doc_ref = db.collection("interacciones").document(payload.id_interaccion)
-    if doc_ref.get().exists:
-        raise HTTPException(status_code=409, detail="id_interaccion ya existe en Firestore")
-
-    validar_usuario_en_d1(payload.id_usuario)
-
-    data = payload.model_dump()
-    if data["tipo"] == "reaccion":
-        data["texto"] = None
-        data["longitud_texto"] = 0
-    else:
-        data["longitud_texto"] = _calcular_longitud_texto(data["tipo"], data.get("texto"))
-
-    data["auditoria"] = {
-        "origen": "api_rest_postman",
-        "fecha_carga_utc": utc_now_iso(),
-        "regla_privacidad": "sin_datos_geo",
-        "actor": usuario["username"],
-    }
-    # Garantizar ausencia de campos geo
-    for k in ["pais", "estado", "ciudad", "latitud", "longitud"]:
-        data.pop(k, None)
-
-    doc_ref.set(data)
+    data = await run_in_threadpool(_crear_interaccion_sync, payload, usuario)
     await emitir_evento_interaccion("interaccion_creada", data, usuario["username"])
     return data
 
 
 @app.put("/api/interacciones/{id_interaccion}")
 async def actualizar_interaccion(id_interaccion: str, payload: InteraccionUpdate, usuario=Depends(obtener_usuario_actual)):
-    db = get_firestore()
-    doc_ref = db.collection("interacciones").document(id_interaccion)
-    doc = doc_ref.get()
-    if not doc.exists:
-        raise HTTPException(status_code=404, detail="Interacción no encontrada")
-
-    actual = _normalizar_interaccion_doc(doc.to_dict() or {})
-    validar_usuario_en_d1(str(actual.get("id_usuario") or ""))
-    cambios = payload.model_dump(exclude_unset=True)
-    if not cambios:
-        raise HTTPException(status_code=400, detail="No se proporcionaron campos para actualizar")
-
-    actualizado = {**actual, **cambios}
-    actualizado["id_interaccion"] = actual.get("id_interaccion", id_interaccion)
-    actualizado["id_usuario"] = actual.get("id_usuario")
-
-    if actualizado.get("canal") not in CANALES_VALIDOS:
-        raise HTTPException(status_code=400, detail="canal inválido")
-    if actualizado.get("tipo") not in TIPOS_VALIDOS:
-        raise HTTPException(status_code=400, detail="tipo inválido")
-    try:
-        sent = float(actualizado.get("sentimiento"))
-    except Exception:
-        raise HTTPException(status_code=400, detail="sentimiento inválido")
-    if not -1.0 <= sent <= 1.0:
-        raise HTTPException(status_code=400, detail="sentimiento debe estar en [-1.0, 1.0]")
-    actualizado["sentimiento"] = sent
-
-    if actualizado["tipo"] == "reaccion":
-        actualizado["texto"] = None
-        actualizado["longitud_texto"] = 0
-    else:
-        actualizado["longitud_texto"] = _calcular_longitud_texto(actualizado["tipo"], actualizado.get("texto"))
-
-    auditoria_prev = actual.get("auditoria") or {}
-    actualizado["auditoria"] = {
-        **auditoria_prev,
-        "origen": auditoria_prev.get("origen", "api_rest_postman"),
-        "fecha_carga_utc": auditoria_prev.get("fecha_carga_utc", utc_now_iso()),
-        "fecha_actualizacion_utc": utc_now_iso(),
-        "regla_privacidad": "sin_datos_geo",
-        "actor": usuario["username"],
-    }
-    for k in ["pais", "estado", "ciudad", "latitud", "longitud"]:
-        actualizado.pop(k, None)
-
-    doc_ref.set(actualizado)
+    actualizado = await run_in_threadpool(_actualizar_interaccion_sync, id_interaccion, payload, usuario)
     await emitir_evento_interaccion("interaccion_actualizada", actualizado, usuario["username"])
     return actualizado
 
 
 @app.delete("/api/interacciones/{id_interaccion}")
 async def eliminar_interaccion(id_interaccion: str, usuario=Depends(obtener_usuario_actual)):
-    db = get_firestore()
-    doc_ref = db.collection("interacciones").document(id_interaccion)
-    doc = doc_ref.get()
-    if not doc.exists:
-        raise HTTPException(status_code=404, detail="Interacción no encontrada")
-    data = _normalizar_interaccion_doc(doc.to_dict() or {})
-    doc_ref.delete()
-    await emitir_evento_interaccion("interaccion_eliminada", {"id_interaccion": id_interaccion, **data}, usuario["username"])
+    eliminada = await run_in_threadpool(_eliminar_interaccion_sync, id_interaccion)
+    await emitir_evento_interaccion("interaccion_eliminada", eliminada, usuario["username"])
     return {"ok": True, "mensaje": "Interacción eliminada", "id_interaccion": id_interaccion}
 
 
 @app.get("/api/historico/dashboard")
-async def historico_dashboard(usuario=Depends(obtener_usuario_actual)):
+def historico_dashboard(usuario=Depends(obtener_usuario_actual)):
     total_usuarios = ejecutar_d1("SELECT COUNT(*) AS total FROM usuarios")["results"][0]["total"]
     con_consent = ejecutar_d1("SELECT COUNT(*) AS total FROM usuarios WHERE consentimiento_datos = 1")["results"][0]["total"]
     sin_consent = ejecutar_d1("SELECT COUNT(*) AS total FROM usuarios WHERE consentimiento_datos = 0")["results"][0]["total"]
@@ -682,7 +639,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str | None = Query(def
     try:
         error_metricas = None
         try:
-            metricas = recalcular_metricas_dinamicas(guardar_en_firestore=False)
+            metricas = await run_in_threadpool(recalcular_metricas_dinamicas, False)
         except Exception as exc:
             error_metricas = f"No se pudieron calcular las métricas iniciales: {exc}"
             print(error_metricas)

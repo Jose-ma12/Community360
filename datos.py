@@ -10,10 +10,19 @@ import requests
 from dotenv import load_dotenv
 from firebase_admin import credentials, firestore
 
+from metricas import (
+    CANALES_VALIDOS,
+    DISPOSITIVOS_VALIDOS,
+    TEMAS_VALIDOS,
+    TIPOS_VALIDOS,
+    calcular_metricas as calcular_metricas_globales,
+)
+
 BASE_DIR = Path(__file__).resolve().parent
 ARCHIVO_USUARIOS = BASE_DIR / "comunidad_virtual_usuarios.csv"
 ARCHIVO_INTERACCIONES = BASE_DIR / "comunidad_virtual_1000_interacciones.csv"
 DIR_SALIDA = BASE_DIR / "datos_depurados"
+ARCHIVO_ESQUEMA_D1 = BASE_DIR / "schema_d1.sql"
 TIMESTAMP_UTC_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 
 
@@ -192,6 +201,18 @@ def etapa_4_validar(usuarios, interacciones, bitacora):
         lambda v: a_flotante(v, "sentimiento", -1.0, 1.0)
     )
 
+    catalogos = {
+        "canal": CANALES_VALIDOS,
+        "tipo": TIPOS_VALIDOS,
+        "tema": TEMAS_VALIDOS,
+        "dispositivo": DISPOSITIVOS_VALIDOS,
+    }
+    for columna, permitidos in catalogos.items():
+        fuera = ~interacciones[columna].isin(permitidos)
+        if fuera.any():
+            valores = sorted(set(map(str, interacciones.loc[fuera, columna])))
+            raise ValueError(f"{columna} con valores fuera de catálogo: {valores}")
+
     fechas_ordenadas = usuarios["ultima_actividad"] >= usuarios["fecha_ingreso"]
     if not fechas_ordenadas.all():
         raise ValueError(f"ultima_actividad < fecha_ingreso en {(~fechas_ordenadas).sum()} usuarios")
@@ -199,6 +220,7 @@ def etapa_4_validar(usuarios, interacciones, bitacora):
         "usuarios_validados": len(usuarios),
         "interacciones_validadas": len(interacciones),
         "fechas_cronologicamente_validas": int(fechas_ordenadas.sum()),
+        "categorias_validadas": list(catalogos),
     }
     print(
         "[ETAPA 4] Tipos y rangos validados: "
@@ -276,15 +298,8 @@ def etapa_6_privacidad(usuarios, bitacora):
 
 
 def calcular_metricas(validas):
-    return {
-        "total_interacciones": len(validas),
-        "sentimiento_promedio": round(float(validas["sentimiento"].mean()), 6),
-        "total_reacciones": int(validas["reacciones_recibidas"].sum()),
-        "por_canal": validas["canal"].value_counts().astype(int).to_dict(),
-        "por_tema": validas["tema"].value_counts().astype(int).to_dict(),
-        "por_tipo": validas["tipo"].value_counts().astype(int).to_dict(),
-        "ultima_actualizacion": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-    }
+    # Mismo cálculo que usa la API (metricas.py), para que resumen_global no cambie de forma.
+    return calcular_metricas_globales(validas.to_dict("records"))
 
 
 def etapa_7_exportar(maestros, ubicacion, metricas, cuarentena, validas, metricas_tiempo_real, bitacora):
@@ -322,6 +337,15 @@ def ejecutar_d1(sql, params=None):
     return datos["result"][0]
 
 
+def crear_esquema_d1():
+    sql = ARCHIVO_ESQUEMA_D1.read_text(encoding="utf-8")
+    sin_comentarios = "\n".join(l for l in sql.splitlines() if not l.strip().startswith("--"))
+    sentencias = [x.strip() for x in sin_comentarios.split(";") if x.strip()]
+    for sentencia in sentencias:
+        ejecutar_d1(sentencia)
+    return len(sentencias)
+
+
 def insertar_d1_tabla(tabla, columnas, registros, tamanio_lote=10):
     marcas = "(" + ", ".join("?" for _ in columnas) + ")"
     for inicio in range(0, len(registros), tamanio_lote):
@@ -340,6 +364,8 @@ def insertar_d1_tabla(tabla, columnas, registros, tamanio_lote=10):
 
 
 def etapa_8_carga(maestros, ubicacion, metricas, cuarentena, validas, metricas_tiempo_real, bitacora):
+    sentencias = crear_esquema_d1()
+    print(f"[ETAPA 8] Esquema D1 verificado ({sentencias} sentencias de schema_d1.sql)")
     ejecutar_d1("DELETE FROM interacciones_cuarentena")
     tablas = {
         "usuarios": (
@@ -367,7 +393,8 @@ def etapa_8_carga(maestros, ubicacion, metricas, cuarentena, validas, metricas_t
         conteos_d1[tabla] = insertar_d1_tabla(tabla, columnas, list(registros))
     print("[ETAPA 8] D1 cargado: " + ", ".join(f"{k}={v}" for k, v in conteos_d1.items()))
 
-    firebase_admin.initialize_app(credentials.Certificate(str(BASE_DIR / os.getenv("FIREBASE_CREDENTIALS_PATH"))))
+    if not firebase_admin._apps:
+        firebase_admin.initialize_app(credentials.Certificate(str(BASE_DIR / os.getenv("FIREBASE_CREDENTIALS_PATH"))))
     db = firestore.client()
     campos_firestore = [
         "id_interaccion", "id_usuario", "timestamp", "canal", "tipo", "texto", "tema",

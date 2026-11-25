@@ -1,7 +1,7 @@
 import sys
 
-sys.stdout.reconfigure(encoding="utf-8")
-sys.stdin.reconfigure(encoding="utf-8")
+if sys.stdout is not None:
+    sys.stdout.reconfigure(encoding="utf-8")
 
 import os
 from datetime import datetime, timezone
@@ -35,10 +35,11 @@ COLUMNAS_ESPERADAS = (
     ("creado_utc", "TEXT", 1, 0),
 )
 
+# Las credenciales del administrador se leen del archivo .env (nunca se escriben en el código).
 DEFAULT_ADMIN = {
-    "username": "admin_c360",
-    "nombre_completo": "José Manuel González Canché",
-    "password": "Community360#2026",
+    "username": os.getenv("ADMIN_USERNAME") or "admin_c360",
+    "nombre_completo": os.getenv("ADMIN_NOMBRE_COMPLETO") or "José Manuel González Canché",
+    "password": os.getenv("ADMIN_PASSWORD"),
     "rol": "administrador",
     "activo": 1,
 }
@@ -105,7 +106,9 @@ def registrar_o_actualizar_admin(username=None, nombre_completo=None, password=N
     nombre_completo = (nombre_completo or DEFAULT_ADMIN["nombre_completo"]).strip()
     password = password or DEFAULT_ADMIN["password"]
     if not username or not password:
-        raise ValueError("username y password son obligatorios")
+        raise RuntimeError("Define ADMIN_USERNAME y ADMIN_PASSWORD en el archivo .env antes de ejecutar este script")
+    if len(password) < 12:
+        raise RuntimeError("ADMIN_PASSWORD debe tener al menos 12 caracteres")
 
     password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(rounds=12)).decode("utf-8")
     creado_utc = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -137,6 +140,8 @@ def registrar_o_actualizar_admin(username=None, nombre_completo=None, password=N
 
 
 def main():
+    if not DEFAULT_ADMIN["password"]:
+        raise RuntimeError("Define ADMIN_USERNAME y ADMIN_PASSWORD en el archivo .env antes de ejecutar este script")
     recreada = verificar_o_recrear_tabla_usuarios_sistema()
     if recreada:
         print("[OK] Tabla usuarios_sistema recreada en D1")
