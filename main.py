@@ -3,6 +3,8 @@ import json
 import math
 import os
 import re
+import threading
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
@@ -81,7 +83,16 @@ async def lifespan(_app):
     yield
 
 
-app = FastAPI(title="Community360 API", version="1.1.0", lifespan=lifespan)
+# /docs y /openapi.json describen la API sin pedir sesión: apagados salvo que ENABLE_API_DOCS=true.
+DOCS_HABILITADOS = os.getenv("ENABLE_API_DOCS", "false").lower() == "true"
+app = FastAPI(
+    title="Community360 API",
+    version="1.2.0",
+    lifespan=lifespan,
+    docs_url="/docs" if DOCS_HABILITADOS else None,
+    redoc_url=None,
+    openapi_url="/openapi.json" if DOCS_HABILITADOS else None,
+)
 # La API usa encabezado Authorization (no cookies), así que no se necesitan credenciales CORS.
 app.add_middleware(
     CORSMiddleware,
@@ -129,6 +140,37 @@ class GestorWebSockets:
 
 
 gestor_ws = GestorWebSockets()
+
+
+# Límite de intentos fallidos de login por IP + usuario (en memoria): 5 fallos en 5 minutos → 429.
+MAX_INTENTOS_LOGIN = int(os.getenv("LOGIN_MAX_INTENTOS", "5"))
+VENTANA_LOGIN_S = int(os.getenv("LOGIN_VENTANA_SEGUNDOS", "300"))
+_intentos_login: dict[str, list[float]] = {}
+_intentos_lock = threading.Lock()
+
+
+def _clave_intento(request: Request, username: str) -> str:
+    ip = request.client.host if request.client else "desconocida"
+    return f"{ip}|{username.strip().lower()}"
+
+
+def _verificar_bloqueo_login(clave: str) -> None:
+    ahora = time.monotonic()
+    with _intentos_lock:
+        recientes = [t for t in _intentos_login.get(clave, []) if ahora - t < VENTANA_LOGIN_S]
+        _intentos_login[clave] = recientes
+        if len(recientes) >= MAX_INTENTOS_LOGIN:
+            espera = int(VENTANA_LOGIN_S - (ahora - recientes[0])) + 1
+            raise HTTPException(
+                status_code=429,
+                detail="Demasiados intentos fallidos. Intenta de nuevo más tarde.",
+                headers={"Retry-After": str(espera)},
+            )
+
+
+def _registrar_fallo_login(clave: str) -> None:
+    with _intentos_lock:
+        _intentos_login.setdefault(clave, []).append(time.monotonic())
 
 
 class LoginRequest(BaseModel):
@@ -340,11 +382,18 @@ def ejecutar_d1(sql: str, params: list | None = None) -> dict:
         resp = requests.post(url, headers=headers, json=payload, timeout=30)
     except requests.RequestException as exc:
         raise HTTPException(status_code=503, detail=f"Cloudflare D1 no disponible: {type(exc).__name__}") from exc
+    # El detalle técnico de Cloudflare se registra solo en la consola del servidor; al cliente
+    # le llega un mensaje genérico, sin SQL, nombres de tablas ni identificadores internos.
     if resp.status_code >= 400:
-        raise HTTPException(status_code=502, detail=f"Error D1 HTTP {resp.status_code}: {resp.text[:200]}")
+        print(f"[D1] HTTP {resp.status_code}: {resp.text[:500]}")
+        raise HTTPException(status_code=502, detail="Error al consultar la base de datos")
     data = resp.json()
     if not data.get("success"):
-        raise HTTPException(status_code=502, detail=f"D1 rechazó consulta: {data.get('errors')}")
+        errores = data.get("errors")
+        print(f"[D1] Consulta rechazada: {errores}")
+        if "tokens_revocados" in str(errores):
+            raise HTTPException(status_code=502, detail="Falta la tabla tokens_revocados")
+        raise HTTPException(status_code=502, detail="Error al consultar la base de datos")
     return data["result"][0]
 
 
@@ -593,23 +642,26 @@ async def dashboard_ruta_antigua():
 
 @app.post("/api/auth/login")
 def login(req: LoginRequest, request: Request, response: Response):
+    clave = _clave_intento(request, req.username)
+    _verificar_bloqueo_login(clave)
     res = ejecutar_d1(
         f"SELECT {', '.join(COLUMNAS_LOGIN_USUARIO)} FROM usuarios_sistema WHERE username = ? LIMIT 1",
         [req.username.strip()],
     )
     rows = res.get("results", [])
-    if not rows:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales inválidas")
-    user = rows[0]
-    if int(user.get("activo", 0)) != 1:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario inactivo")
-    password_hash = (user.get("password_hash") or "").encode("utf-8")
+    user = rows[0] if rows else None
+    password_hash = ((user or {}).get("password_hash") or "").encode("utf-8")
     try:
-        valida = bcrypt.checkpw(req.password.encode("utf-8"), password_hash)
+        valida = bool(user) and bcrypt.checkpw(req.password.encode("utf-8"), password_hash)
     except ValueError:
         valida = False
-    if not valida:
+    # Mismo mensaje para usuario inexistente, contraseña incorrecta o usuario inactivo:
+    # así el login no revela qué usuarios existen.
+    if not valida or int(user.get("activo", 0)) != 1:
+        _registrar_fallo_login(clave)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales inválidas")
+    with _intentos_lock:
+        _intentos_login.pop(clave, None)
     token = crear_jwt(user["username"], user.get("rol") or "administrador")
     response.set_cookie(
         COOKIE_SESION,
