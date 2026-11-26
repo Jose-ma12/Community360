@@ -4,13 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Community360 | Iniciar sesión</title>
-  <script>
-    (function () {
-      var theme = 'dark';
-      try { theme = localStorage.getItem('c360_theme') || 'dark'; } catch (e) {}
-      document.documentElement.setAttribute('data-theme', theme === 'light' ? 'light' : 'dark');
-    })();
-  </script>
+  <script src="/static/tema.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;family=Space+Grotesk:wght@500;600&amp;display=swap" rel="stylesheet">
@@ -24,7 +18,7 @@
   <button id="themeToggleBtn" class="btn-tema" type="button" aria-label="Cambiar tema">
     <svg class="icon icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"></path></svg>
     <svg class="icon icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42"></path></svg>
-    <span class="theme-label">Modo Claro</span>
+    <span class="theme-label">Modo claro</span>
   </button>
   <main class="login-zona">
     <section class="tarjeta" aria-labelledby="tituloLogin">
@@ -33,10 +27,10 @@
       <p class="sub">Panel de la comunidad. Solo para administradores autorizados.</p>
       <form id="loginForm" novalidate>
         <label for="username">Usuario</label>
-        <input id="username" name="username" type="text" autocomplete="username" required>
+        <input id="username" name="username" type="text" autocomplete="username" maxlength="64" spellcheck="false" autocapitalize="off" required>
         <label for="password">Contraseña</label>
         <div class="campo-pass">
-          <input id="password" name="password" type="password" autocomplete="current-password" required>
+          <input id="password" name="password" type="password" autocomplete="current-password" maxlength="128" required>
           <button id="passwordToggle" type="button" aria-label="Mostrar contraseña" aria-pressed="false">
             <svg class="icon icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"></path><circle cx="12" cy="12" r="2.8"></circle></svg>
             <svg class="icon icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"></path><path d="M10.6 6.1A9.8 9.8 0 0 1 12 6c6 0 9.5 6 9.5 6a16 16 0 0 1-3.1 3.7"></path><path d="M6.2 7.8A16 16 0 0 0 2.5 12S6 18 12 18a9.6 9.6 0 0 0 3.4-.6"></path><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"></path></svg>
@@ -49,105 +43,7 @@
     </section>
   </main>
 
-  <script>
-    (function () {
-      // Misma clave que usa el dashboard (THEME_KEY en app.js): el tema elegido aquí se conserva al entrar.
-      var CLAVE = 'c360_theme';
-      var btn = document.getElementById('themeToggleBtn');
-      if (!btn) return;
-      var label = btn.querySelector('.theme-label');
-      function aplicarTema(tema) {
-        tema = tema === 'light' ? 'light' : 'dark';
-        document.documentElement.setAttribute('data-theme', tema);
-        try { localStorage.setItem(CLAVE, tema); } catch (e) {}
-        var light = tema === 'light';
-        if (label) label.textContent = light ? 'Modo Oscuro' : 'Modo Claro';
-        btn.setAttribute('aria-label', light ? 'Activar modo oscuro' : 'Activar modo claro');
-        btn.setAttribute('aria-pressed', String(light));
-      }
-      var temaInicial = 'dark';
-      try { temaInicial = localStorage.getItem(CLAVE) || 'dark'; } catch (e) {}
-      aplicarTema(temaInicial);
-      btn.addEventListener('click', function () {
-        var actual = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
-        aplicarTema(actual === 'light' ? 'dark' : 'light');
-      });
-    })();
-  </script>
-  <script>
-    (function () {
-      var toggle = document.getElementById('passwordToggle');
-      var input = document.getElementById('password');
-      if (!toggle || !input) return;
-      toggle.addEventListener('click', function () {
-        var visible = input.type === 'password';
-        input.type = visible ? 'text' : 'password';
-        toggle.classList.toggle('is-visible', visible);
-        toggle.setAttribute('aria-pressed', String(visible));
-        toggle.setAttribute('aria-label', visible ? 'Ocultar contraseña' : 'Mostrar contraseña');
-        input.focus();
-      });
-    })();
-  </script>
-  <script>
-    (function () {
-      const API_BASE = '';
-      // /dashboard manda aquí con ?sesion=expirada cuando no hay cookie de sesión válida:
-      // se limpia la sesión local para no rebotar entre login y dashboard.
-      const sesionExpirada = new URLSearchParams(window.location.search).has('sesion');
-      if (sesionExpirada) {
-        try { sessionStorage.removeItem('c360_token'); sessionStorage.removeItem('c360_user'); } catch (e) {}
-      }
-      const token = sesionExpirada ? null : sessionStorage.getItem('c360_token');
-      if (token) {
-        fetch(`${API_BASE}/api/auth/verify`, { headers: { 'Authorization': `Bearer ${token}` } })
-          .then(r => { if (r.ok) window.location.href = '/dashboard'; })
-          .catch(() => {});
-      }
-
-      const form = document.getElementById('loginForm');
-      const errorBox = document.getElementById('loginError');
-      const btn = document.getElementById('loginBtn');
-      const usernameInput = document.getElementById('username');
-      const passwordInput = document.getElementById('password');
-      if (!form || !errorBox || !btn || !usernameInput || !passwordInput) return;
-
-      form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        errorBox.className = 'error';
-        errorBox.textContent = '';
-        const username = usernameInput.value.trim();
-        const password = passwordInput.value;
-        if (!username || !password) {
-          errorBox.textContent = 'Usuario y contraseña son obligatorios.';
-          errorBox.classList.add('show');
-          return;
-        }
-        btn.disabled = true;
-        btn.textContent = 'Verificando...';
-        try {
-          const resp = await fetch(`${API_BASE}/api/auth/login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password })
-          });
-          const data = await resp.json().catch(() => ({}));
-          if (!resp.ok) {
-            throw new Error(resp.status === 429 ? 'Demasiados intentos. Espera unos minutos e inténtalo de nuevo.' : (typeof data.detail === 'string' ? data.detail : 'Usuario o contraseña incorrectos.'));
-          }
-          sessionStorage.setItem('c360_token', data.access_token);
-          sessionStorage.setItem('c360_user', JSON.stringify(data.usuario || {}));
-          window.location.href = '/dashboard';
-        } catch (err) {
-          errorBox.textContent = err.message || 'Error de autenticación.';
-          errorBox.classList.add('show');
-        } finally {
-          btn.disabled = false;
-          btn.textContent = 'Entrar';
-        }
-      });
-    })();
-  </script>
+  <script src="/static/login.js"></script>
   <script src="/static/login-fondo.js"></script>
 </body>
 </html>

@@ -42,8 +42,11 @@ from metricas import (
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
-ID_INTERACCION_RE = re.compile(r"^I\d+$")
-ID_USUARIO_RE = re.compile(r"^U\d+$")
+ID_INTERACCION_RE = re.compile(r"^I\d{1,9}$")
+ID_USUARIO_RE = re.compile(r"^U\d{1,9}$")
+MAX_TEXTO = 2000
+MAX_ETIQUETAS = 20
+MAX_LARGO_ETIQUETA = 40
 IDIOMA_RE = re.compile(r"^[a-z]{2}$")
 COLUMNAS_LOGIN_USUARIO = ("username", "nombre_completo", "password_hash", "rol", "activo")
 COLUMNAS_PERFIL_USUARIO = ("username", "nombre_completo", "rol", "activo")
@@ -79,11 +82,11 @@ CABECERAS_SEGURIDAD = {
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
     "Content-Security-Policy": (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline'; "
+        "script-src 'self'; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com; "
         "img-src 'self' data:; "
-        "connect-src 'self' ws: wss:; "
+        "connect-src 'self'; "
         "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
     ),
 }
@@ -115,12 +118,16 @@ app = FastAPI(
     openapi_url="/openapi.json" if DOCS_HABILITADOS else None,
 )
 # La API usa encabezado Authorization (no cookies), así que no se necesitan credenciales CORS.
+# Solo se aceptan peticiones de navegador desde los orígenes listados (Postman no usa CORS).
+ORIGENES_PERMITIDOS = [
+    o.strip() for o in os.getenv("CORS_ORIGINS", "http://127.0.0.1:8000,http://localhost:8000").split(",") if o.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ORIGENES_PERMITIDOS,
     allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 
@@ -134,25 +141,33 @@ async def cabeceras_de_seguridad(request, call_next):
 
 @app.exception_handler(google_exceptions.GoogleAPIError)
 async def firestore_no_disponible(_request, exc):
+    # El detalle técnico solo va a la consola del servidor; el cliente recibe un mensaje genérico.
+    print(f"[Firestore] {type(exc).__name__}: {exc}")
     return JSONResponse(
         status_code=503,
-        content={"detail": f"Firestore no disponible: {type(exc).__name__}. Revisa la conexión a firestore.googleapis.com."},
+        content={"detail": "El servicio de datos no está disponible. Intenta de nuevo en unos momentos."},
     )
 
 
 class GestorWebSockets:
     def __init__(self):
         self.activos: list[WebSocket] = []
+        self.sesiones: dict[int, dict] = {}  # id(websocket) -> {"jti", "exp"} de la sesión que lo abrió
         self.lock = asyncio.Lock()
 
-    async def conectar(self, websocket: WebSocket):
+    async def conectar(self, websocket: WebSocket, sesion: dict | None = None):
         async with self.lock:
             self.activos.append(websocket)
+            self.sesiones[id(websocket)] = sesion or {}
 
     async def desconectar(self, websocket: WebSocket):
         async with self.lock:
             if websocket in self.activos:
                 self.activos.remove(websocket)
+            self.sesiones.pop(id(websocket), None)
+
+    def sesion_vigente(self, websocket: WebSocket) -> bool:
+        return sesion_ws_vigente(self.sesiones.get(id(websocket)))
 
     async def broadcast(self, mensaje: dict):
         data = json.dumps(sanitizar_json(mensaje), ensure_ascii=False, default=str, allow_nan=False)
@@ -160,12 +175,29 @@ class GestorWebSockets:
             activos = list(self.activos)
         stale = []
         for ws in activos:
+            # Una sesión que expiró o se cerró (logout) deja de recibir datos y se desconecta.
+            if not self.sesion_vigente(ws):
+                stale.append(ws)
+                try:
+                    await ws.close(code=1008)
+                except Exception:
+                    pass
+                continue
             try:
                 await ws.send_text(data)
             except Exception:
                 stale.append(ws)
         for ws in stale:
             await self.desconectar(ws)
+
+
+def sesion_ws_vigente(sesion: dict | None) -> bool:
+    if not sesion or not sesion.get("jti"):
+        return False
+    if sesion["jti"] in TOKENS_REVOCADOS:
+        return False
+    exp = sesion.get("exp")
+    return exp is None or time.time() < int(exp)
 
 
 gestor_ws = GestorWebSockets()
@@ -198,13 +230,25 @@ def _verificar_bloqueo_login(clave: str) -> None:
 
 
 def _registrar_fallo_login(clave: str) -> None:
+    ahora = time.monotonic()
     with _intentos_lock:
-        _intentos_login.setdefault(clave, []).append(time.monotonic())
+        # Limpieza para que miles de usuarios inventados no llenen la memoria del servidor.
+        if len(_intentos_login) > 5000:
+            for k in [k for k, v in _intentos_login.items() if not v or ahora - v[-1] >= VENTANA_LOGIN_S]:
+                _intentos_login.pop(k, None)
+        _intentos_login.setdefault(clave, []).append(ahora)
+
+
+# Hash de relleno: si el usuario no existe se compara contra este hash, así la respuesta tarda
+# lo mismo que con un usuario real y no se puede adivinar qué usuarios existen midiendo el tiempo.
+HASH_RELLENO = bcrypt.hashpw(b"community360-relleno", bcrypt.gensalt())
 
 
 class LoginRequest(BaseModel):
-    username: str = Field(..., min_length=1)
-    password: str = Field(..., min_length=1)
+    model_config = ConfigDict(extra="forbid")
+
+    username: str = Field(..., min_length=1, max_length=64)
+    password: str = Field(..., min_length=1, max_length=128)
 
 
 def _validar_enum(valor, permitidos, campo):
@@ -223,12 +267,16 @@ def _validar_timestamp(valor):
     """Acepta ISO-8601 con zona horaria y lo guarda siempre en UTC (AAAA-MM-DDTHH:MM:SSZ), igual que el ETL."""
     if valor is None:
         return valor
+    if len(valor) > 40:
+        raise ValueError("timestamp demasiado largo")
     try:
         dt = datetime.fromisoformat(valor.strip().replace("Z", "+00:00"))
     except Exception as exc:
         raise ValueError("timestamp debe ser ISO-8601 válido, p. ej. 2026-11-23T20:15:00Z") from exc
     if dt.tzinfo is None:
         raise ValueError("timestamp debe indicar la zona horaria (termina en Z para UTC)")
+    if dt > datetime.now(timezone.utc) + timedelta(days=1):
+        raise ValueError("timestamp no puede estar en el futuro")
     return dt.astimezone(timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
@@ -257,19 +305,19 @@ def _validar_sentimiento(valor):
 class InteraccionBase(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    id_interaccion: str
-    id_usuario: str
+    id_interaccion: str = Field(..., max_length=10)
+    id_usuario: str = Field(..., max_length=10)
     timestamp: str
     canal: str
     tipo: str
-    texto: str | None = None
+    texto: str | None = Field(default=None, max_length=MAX_TEXTO)
     tema: str
     sentimiento: float
     idioma: str
     dispositivo: str
     longitud_texto: int | None = None
     reacciones_recibidas: int = Field(..., ge=0)
-    etiquetas: list[str] = Field(default_factory=list)
+    etiquetas: list[str] = Field(default_factory=list, max_length=MAX_ETIQUETAS * 5)
 
     @field_validator("id_interaccion")
     @classmethod
@@ -337,14 +385,14 @@ class InteraccionUpdate(BaseModel):
     timestamp: str | None = None
     canal: str | None = None
     tipo: str | None = None
-    texto: str | None = None
+    texto: str | None = Field(default=None, max_length=MAX_TEXTO)
     tema: str | None = None
     sentimiento: float | None = None
     idioma: str | None = None
     dispositivo: str | None = None
     longitud_texto: int | None = None
     reacciones_recibidas: int | None = Field(default=None, ge=0)
-    etiquetas: list[str] | None = None
+    etiquetas: list[str] | None = Field(default=None, max_length=MAX_ETIQUETAS * 5)
 
     @field_validator("canal")
     @classmethod
@@ -522,6 +570,12 @@ def _calcular_longitud_texto(tipo: str, texto: str | None) -> int:
     if tipo == "reaccion":
         return 0
     return len(texto or "")
+
+
+def validar_id_interaccion_ruta(id_interaccion: str) -> str:
+    if not ID_INTERACCION_RE.match(id_interaccion or ""):
+        raise HTTPException(status_code=400, detail="id_interaccion debe tener el formato I seguido de números (p. ej. I0001)")
+    return id_interaccion
 
 
 def validar_usuario_en_d1(id_usuario: str) -> None:
@@ -755,13 +809,15 @@ def health():
     try:
         ejecutar_d1("SELECT 1 AS ok")
     except Exception as exc:
-        estado["d1"] = f"error: {getattr(exc, 'detail', exc)}"
+        print(f"[health] D1: {getattr(exc, 'detail', exc)}")
+        estado["d1"] = "error"
     try:
         get_firestore().collection("metricas_tiempo_real").document("resumen_global").get(
             retry=Retry(initial=0.5, maximum=1.0, multiplier=2.0, timeout=5), timeout=5
         )
     except Exception as exc:
-        estado["firestore"] = f"error: {type(exc).__name__}"
+        print(f"[health] Firestore: {type(exc).__name__}: {exc}")
+        estado["firestore"] = "error"
     codigo = 200 if estado["d1"] == "ok" and estado["firestore"] == "ok" else 503
     return JSONResponse(status_code=codigo, content=estado)
 
@@ -788,6 +844,7 @@ def listar_interacciones(
 
 @app.get("/api/interacciones/{id_interaccion}")
 def obtener_interaccion(id_interaccion: str, usuario=Depends(obtener_usuario_actual)):
+    validar_id_interaccion_ruta(id_interaccion)
     db = get_firestore()
     doc = db.collection("interacciones").document(id_interaccion).get(**FS)
     if not doc.exists:
@@ -804,6 +861,7 @@ async def crear_interaccion(payload: InteraccionBase, usuario=Depends(obtener_us
 
 @app.put("/api/interacciones/{id_interaccion}")
 async def actualizar_interaccion(id_interaccion: str, payload: InteraccionUpdate, usuario=Depends(obtener_usuario_actual)):
+    validar_id_interaccion_ruta(id_interaccion)
     actualizado = await run_in_threadpool(_actualizar_interaccion_sync, id_interaccion, payload, usuario)
     await emitir_evento_interaccion("interaccion_actualizada", actualizado, usuario["username"])
     return actualizado
@@ -811,6 +869,7 @@ async def actualizar_interaccion(id_interaccion: str, payload: InteraccionUpdate
 
 @app.delete("/api/interacciones/{id_interaccion}")
 async def eliminar_interaccion(id_interaccion: str, usuario=Depends(obtener_usuario_actual)):
+    validar_id_interaccion_ruta(id_interaccion)
     eliminada = await run_in_threadpool(_eliminar_interaccion_sync, id_interaccion)
     await emitir_evento_interaccion("interaccion_eliminada", eliminada, usuario["username"])
     return {"ok": True, "mensaje": "Interacción eliminada", "id_interaccion": id_interaccion}
@@ -871,8 +930,8 @@ def historico_dashboard(usuario=Depends(obtener_usuario_actual)):
     try:
         metricas_firestore = recalcular_metricas_dinamicas(guardar_en_firestore=False)
     except Exception as exc:
-        error_firestore = f"No se pudieron leer las métricas de Firestore: {exc}"
-        print(error_firestore)
+        print(f"[historico] No se pudieron leer las métricas de Firestore: {exc}")
+        error_firestore = "No se pudieron cargar los datos en vivo"
         metricas_firestore = metricas_vacias()
 
     return {
@@ -894,7 +953,7 @@ def historico_dashboard(usuario=Depends(obtener_usuario_actual)):
         "error_firestore": error_firestore,
         "privacidad": {
             "regla": "sin_datos_geo",
-            "filtro_top_ciudades": "INNER JOIN usuarios_ubicacion uu ON u.id_usuario = uu.id_usuario WHERE u.consentimiento_datos = 1",
+            "top_ciudades": "solo usuarios con consentimiento_datos = 1",
         },
     }
 
@@ -993,7 +1052,7 @@ async def websocket_endpoint(websocket: WebSocket):
         await websocket.close(code=1008)
         return
     try:
-        await run_in_threadpool(validar_sesion, token)
+        sesion = await run_in_threadpool(validar_sesion, token)
     except HTTPException as exc:
         # 1008 = token inválido o revocado (el frontend manda al login); 1013 = servicio no disponible, reintentar
         await websocket.close(code=1008 if exc.status_code == 401 else 1013)
@@ -1002,7 +1061,7 @@ async def websocket_endpoint(websocket: WebSocket):
         await websocket.close(code=1013)
         return
 
-    await gestor_ws.conectar(websocket)
+    await gestor_ws.conectar(websocket, {"jti": sesion["jti"], "exp": sesion.get("exp")})
     try:
         error_metricas = None
         try:
@@ -1021,14 +1080,23 @@ async def websocket_endpoint(websocket: WebSocket):
         }), ensure_ascii=False, default=str, allow_nan=False))
         while True:
             msg = await websocket.receive_text()
+            # Si la sesión expiró o se cerró (logout), se corta en el siguiente mensaje (el ping llega cada 25 s).
+            if not gestor_ws.sesion_vigente(websocket):
+                await gestor_ws.desconectar(websocket)
+                await websocket.close(code=1008)
+                return
+            if len(msg) > 4096:
+                continue
             try:
                 data = json.loads(msg)
             except Exception:
-                data = {"type": msg}
+                data = {}
+            if not isinstance(data, dict):
+                data = {}
             if data.get("type") == "ping":
                 await websocket.send_text(json.dumps({"type": "pong", "timestamp_utc": utc_now_iso()}))
             else:
-                await websocket.send_text(json.dumps({"type": "ack", "recibido": data.get("type"), "timestamp_utc": utc_now_iso()}))
+                await websocket.send_text(json.dumps({"type": "ack", "timestamp_utc": utc_now_iso()}))
     except WebSocketDisconnect:
         await gestor_ws.desconectar(websocket)
     except Exception:
