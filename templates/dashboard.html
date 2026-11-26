@@ -17,62 +17,58 @@
   <link rel="stylesheet" href="/static/styles.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
-<body>
-  <aside class="rail" aria-label="Navegación principal">
-    <a class="rail-brand" href="#seccion-tiempo-real" aria-label="C360">C360</a>
-    <nav class="rail-nav">
-      <a class="rail-link is-active" href="#seccion-tiempo-real" aria-label="Tiempo real" title="Tiempo real">
+<body class="dashboard-body">
+  <header class="topbar">
+    <a class="topbar-brand" href="#tiempo-real" aria-label="Community360, ir a Tiempo real">
+      <span class="brand-mark" aria-hidden="true">C360</span>
+      <span class="brand-text">
+        <span class="brand-name">Community360</span>
+        <span class="brand-user" id="userInfo">Monitoreo en tiempo real e históricos</span>
+      </span>
+    </a>
+
+    <nav class="topbar-nav" aria-label="Secciones del dashboard">
+      <a class="tab-link" href="#tiempo-real" data-target="seccion-tiempo-real" aria-label="Tiempo real" aria-current="page">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5V12l3 2"></path></svg>
+        <span class="tab-text">Tiempo real</span>
       </a>
-      <a class="rail-link" href="#zona-pulso" aria-label="Pulso WebSocket" title="Pulso WebSocket">
+      <a class="tab-link" href="#pulso" data-target="zona-pulso" aria-label="Pulso en vivo">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2.5-6 4 12 2.5-6h5"></path></svg>
+        <span class="tab-text">Pulso en vivo</span>
       </a>
-      <a class="rail-link" href="#tabla-recientes" aria-label="Últimas interacciones" title="Últimas interacciones">
+      <a class="tab-link" href="#interacciones" data-target="tabla-recientes" aria-label="Interacciones">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path><circle cx="7" cy="6" r="1"></circle><circle cx="7" cy="12" r="1"></circle><circle cx="7" cy="18" r="1"></circle></svg>
+        <span class="tab-text">Interacciones</span>
       </a>
-      <a class="rail-link" href="#seccion-historicos" aria-label="Consolidado histórico" title="Consolidado histórico">
+      <a class="tab-link" href="#historico" data-target="seccion-historicos" aria-label="Histórico">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19V11M10 19V5M15 19v-7M20 19V8"></path><path d="M3 21h18"></path></svg>
+        <span class="tab-text">Histórico</span>
       </a>
     </nav>
-    <div class="rail-actions">
-      <button id="themeToggleBtn" class="theme-toggle rail-theme" type="button" aria-label="Cambiar tema">
+
+    <div class="topbar-actions">
+      <div class="status-pill" title="Estado de WebSocket">
+        <span id="wsDot" class="dot"></span>
+        <span id="wsStatus">WS: en vivo</span>
+      </div>
+      <div class="timestamp" id="ultimaActualizacion">Última actualización: —</div>
+      <button id="themeToggleBtn" class="theme-toggle icon-btn" type="button" aria-label="Cambiar tema" title="Cambiar tema">
         <svg class="icon icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"></path></svg>
         <svg class="icon icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42"></path></svg>
-        <span class="theme-label">Modo claro</span>
-        <span class="rail-tooltip">Tema</span>
+        <span class="theme-label sr-only">Modo claro</span>
       </button>
-      <button id="logoutBtn" class="rail-logout" type="button" aria-label="Cerrar sesión" title="Cerrar sesión">
+      <button id="logoutBtn" class="icon-btn icon-btn--danger" type="button" aria-label="Cerrar sesión" title="Cerrar sesión">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4"></path><path d="M15 8l4 4-4 4M19 12H9"></path></svg>
-        <span class="rail-tooltip">Cerrar sesión</span>
       </button>
     </div>
-  </aside>
+  </header>
 
   <div class="app-shell">
-    <header class="page-header">
-      <div class="page-heading">
-        <span class="section-pill section-pill-a">Sección A · Telemetría en Tiempo Real</span>
-        <h1>Observatorio Analítico Community360</h1>
-        <p id="userInfo">Monitoreo en tiempo real e históricos</p>
-      </div>
-      <div class="header-meta">
-        <div class="muted timestamp" id="ultimaActualizacion">Última actualización: —</div>
-        <div class="status-pill" title="Estado de WebSocket">
-          <span id="wsDot" class="dot"></span>
-          <span id="wsStatus">WS: en vivo</span>
-        </div>
-      </div>
-    </header>
-
     <main class="app-main">
-      <section class="section" id="seccion-tiempo-real">
-        <div class="section-header">
-          <div class="section-heading">
-            <h2>Firestore + WebSockets</h2>
-            <p>Métricas calculadas sobre las interacciones activas y actualizadas ante cada evento en vivo.</p>
-          </div>
-        </div>
+      <h1 class="sr-only">Observatorio Analítico Community360</h1>
 
+      <section class="screen screen--tiempo-real" id="seccion-tiempo-real" aria-labelledby="titulo-tiempo-real">
+        <h2 class="sr-only" id="titulo-tiempo-real">Tiempo real · Firestore + WebSockets</h2>
         <div class="kpi-hero">
           <article class="kpi-cell">
             <div class="label">Total de interacciones</div>
@@ -108,7 +104,7 @@
           </article>
         </div>
 
-        <div class="bento-row bento-charts">
+        <div class="screen-grid screen-grid--tiempo-real">
           <article class="card">
             <h3>Interacciones por plataforma (canal)</h3>
             <div class="chart-wrap"><canvas id="chartCanal"></canvas></div>
@@ -118,20 +114,26 @@
             <div class="chart-wrap"><canvas id="chartTema"></canvas></div>
           </article>
         </div>
+      </section>
 
-        <div class="bento-row bento-pulso">
+      <section class="screen screen--pulso" id="zona-pulso" aria-labelledby="titulo-pulso" hidden>
+        <h2 class="sr-only" id="titulo-pulso">Pulso en vivo</h2>
+        <div class="screen-grid screen-grid--pulso">
           <article class="card">
             <h3>Mapa de calor de actividad (UTC)</h3>
             <p class="muted subtitle">Filas: Lun–Dom · Columnas: bloques de 4 horas UTC</p>
             <div class="heatmap" id="heatmapContainer"></div>
           </article>
-          <article class="card" id="zona-pulso">
+          <article class="card">
             <h3>Bitácora en vivo de eventos WebSocket</h3>
             <div class="log" id="wsLog"><div class="empty">Sin eventos aún.</div></div>
           </article>
         </div>
+      </section>
 
-        <article class="card table-card" id="tabla-recientes">
+      <section class="screen screen--interacciones" id="tabla-recientes" aria-labelledby="titulo-interacciones" hidden>
+        <h2 class="sr-only" id="titulo-interacciones">Interacciones</h2>
+        <article class="card table-card">
           <h3>Últimas 10 interacciones activas</h3>
           <div class="table-wrap">
             <table class="data">
@@ -148,54 +150,46 @@
         </article>
       </section>
 
-      <section class="section" id="seccion-historicos">
-        <div class="section-header">
-          <div class="section-heading">
-            <span class="section-pill section-pill-b">Sección B · Consolidado Histórico</span>
-            <h2>Cloudflare D1</h2>
-            <p>Datos agregados consultados vía REST, sin datos simulados.</p>
-          </div>
-        </div>
-
+      <section class="screen screen--historico" id="seccion-historicos" aria-labelledby="titulo-historico" hidden>
+        <h2 class="sr-only" id="titulo-historico">Histórico · Cloudflare D1</h2>
         <div class="banner" id="bannerPrivacidad">Verificación de privacidad: top ciudades calculado con INNER JOIN usuarios_ubicacion + usuarios WHERE consentimiento_datos = 1 (regla sin_datos_geo).</div>
 
-        <div class="historico-grid">
-          <div class="historico-kpis">
-            <article class="kpi-mini">
-              <div class="label">Miembros registrados</div>
-              <div class="value" id="hTotalUsuarios">1068</div>
-              <details class="formula"><summary>Tabla: usuarios</summary><p>U = count(u in usuarios)</p></details>
-            </article>
-            <article class="kpi-mini">
-              <div class="label">Ubicación autorizada</div>
-              <div class="value" id="hConConsent">897</div>
-              <details class="formula"><summary>consentimiento_datos = 1</summary><p>U_geo = count(u in usuarios where consentimiento_datos = 1)</p></details>
-            </article>
-            <article class="kpi-mini">
-              <div class="label">Excluidos por privacidad</div>
-              <div class="value" id="hSinConsent">171</div>
-              <details class="formula"><summary>consentimiento_datos = 0</summary><p>U_priv = count(u in usuarios where consentimiento_datos = 0)</p></details>
-            </article>
-            <article class="kpi-mini">
-              <div class="label">Interacciones en cuarentena</div>
-              <div class="value" id="hCuarentena">793</div>
-              <details class="formula"><summary>Tabla: interacciones_cuarentena</summary><p>Q = count(i in interacciones_cuarentena)</p></details>
-            </article>
-          </div>
-          <div class="historico-charts">
-            <article class="card">
-              <h3>Plataforma principal</h3>
-              <div class="chart-wrap chart-wrap--historico"><canvas id="chartPlataforma"></canvas></div>
-            </article>
-            <article class="card">
-              <h3>Riesgo de abandono</h3>
-              <div class="chart-wrap chart-wrap--historico"><canvas id="chartRiesgo"></canvas></div>
-            </article>
-            <article class="card">
-              <h3>Top ciudades autorizadas</h3>
-              <div class="chart-wrap chart-wrap--historico"><canvas id="chartCiudades"></canvas></div>
-            </article>
-          </div>
+        <div class="historico-kpis">
+          <article class="kpi-mini">
+            <div class="label">Miembros registrados</div>
+            <div class="value" id="hTotalUsuarios">1068</div>
+            <details class="formula"><summary>Tabla: usuarios</summary><p>U = count(u in usuarios)</p></details>
+          </article>
+          <article class="kpi-mini">
+            <div class="label">Ubicación autorizada</div>
+            <div class="value" id="hConConsent">897</div>
+            <details class="formula"><summary>consentimiento_datos = 1</summary><p>U_geo = count(u in usuarios where consentimiento_datos = 1)</p></details>
+          </article>
+          <article class="kpi-mini">
+            <div class="label">Excluidos por privacidad</div>
+            <div class="value" id="hSinConsent">171</div>
+            <details class="formula"><summary>consentimiento_datos = 0</summary><p>U_priv = count(u in usuarios where consentimiento_datos = 0)</p></details>
+          </article>
+          <article class="kpi-mini">
+            <div class="label">Interacciones en cuarentena</div>
+            <div class="value" id="hCuarentena">793</div>
+            <details class="formula"><summary>Tabla: interacciones_cuarentena</summary><p>Q = count(i in interacciones_cuarentena)</p></details>
+          </article>
+        </div>
+
+        <div class="screen-grid screen-grid--historico">
+          <article class="card card--plataforma">
+            <h3>Plataforma principal</h3>
+            <div class="chart-wrap"><canvas id="chartPlataforma"></canvas></div>
+          </article>
+          <article class="card card--riesgo">
+            <h3>Riesgo de abandono</h3>
+            <div class="chart-wrap"><canvas id="chartRiesgo"></canvas></div>
+          </article>
+          <article class="card card--ciudades">
+            <h3>Top ciudades autorizadas</h3>
+            <div class="chart-wrap"><canvas id="chartCiudades"></canvas></div>
+          </article>
         </div>
       </section>
     </main>

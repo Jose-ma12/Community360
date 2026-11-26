@@ -91,23 +91,40 @@
     themeToggleBtn.addEventListener('click', () => setTheme(currentTheme() === 'dark' ? 'light' : 'dark'));
   }
 
-  const railLinks = Array.from(document.querySelectorAll('.rail-link'));
-  function markActiveRailLink(activeLink) {
-    railLinks.forEach((link) => link.classList.toggle('is-active', link === activeLink));
+  // Navegación por pantallas: cada pestaña muestra una sección y oculta las demás.
+  // El hash de la URL (#tiempo-real, #pulso, ...) decide la pantalla, así Atrás/Adelante funcionan.
+  const tabLinks = Array.from(document.querySelectorAll('.tab-link'));
+  const screens = tabLinks
+    .map((link) => ({ link, hash: link.getAttribute('href'), el: $(link.dataset.target) }))
+    .filter((s) => s.el);
+
+  function screenForHash(hash) {
+    // También acepta los ids de sección antiguos (#seccion-historicos, ...).
+    return screens.find((s) => s.hash === hash || `#${s.el.id}` === hash) || screens[0];
   }
-  railLinks.forEach((link) => {
-    link.addEventListener('click', (ev) => {
-      const hash = link.getAttribute('href') || '';
-      const target = hash.startsWith('#') ? document.getElementById(hash.slice(1)) : null;
-      if (!target) return;
-      ev.preventDefault();
-      markActiveRailLink(link);
-      if (typeof target.scrollIntoView === 'function') target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      try { history.replaceState(null, '', hash); } catch {}
+
+  function showScreen(hash) {
+    const active = screenForHash(hash);
+    if (!active) return;
+    screens.forEach((s) => {
+      const isActive = s === active;
+      s.el.hidden = !isActive;
+      if (isActive) s.link.setAttribute('aria-current', 'page');
+      else s.link.removeAttribute('aria-current');
     });
-  });
-  const initialRailLink = railLinks.find((link) => link.getAttribute('href') === window.location.hash);
-  if (initialRailLink) markActiveRailLink(initialRailLink);
+    if (hash && hash !== active.hash && `#${active.el.id}` === hash) {
+      try { history.replaceState(null, '', active.hash); } catch {}
+    }
+    // Chart.js no mide bien un canvas oculto: se recalcula el tamaño al hacerse visible.
+    requestAnimationFrame(() => {
+      Object.values(charts).forEach((chart) => {
+        if (active.el.contains(chart.canvas)) chart.resize();
+      });
+    });
+  }
+
+  window.addEventListener('hashchange', () => showScreen(window.location.hash));
+  showScreen(window.location.hash);
 
   function authHeaders() {
     return { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
@@ -494,20 +511,26 @@
       }
     });
 
-    const ciudades = data.top_ciudades_autorizadas || [];
+    const ciudades = [...(data.top_ciudades_autorizadas || [])].sort((a, b) => Number(b.total || 0) - Number(a.total || 0));
+    const ciudadesNombres = ciudades.map(c => `${c.ciudad || 'N/D'}${c.estado ? ', ' + c.estado : ''}`);
+    const MAX_ETIQUETA = 28;
     ensureChart('chartCiudades', {
       type: 'bar',
       data: {
-        labels: ciudades.map(c => `${c.ciudad || 'N/D'}${c.estado ? ', ' + c.estado : ''}`),
-        datasets: [{ label: 'Usuarios', data: ciudades.map(c => c.total), backgroundColor: palette[0], borderColor: palette[4], borderWidth: 1, borderRadius: 6 }]
+        labels: ciudadesNombres.map(n => (n.length > MAX_ETIQUETA ? `${n.slice(0, MAX_ETIQUETA - 1)}…` : n)),
+        datasets: [{ label: 'Usuarios', data: ciudades.map(c => c.total), backgroundColor: palette[0], borderColor: palette[4], borderWidth: 1, borderRadius: 4, maxBarThickness: 22 }]
       },
       options: {
+        indexAxis: 'y',
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { display: false }, tooltip: { ...chartTooltip } },
+        plugins: {
+          legend: { display: false },
+          tooltip: { ...chartTooltip, callbacks: { title: (items) => ciudadesNombres[items[0]?.dataIndex] ?? '' } }
+        },
         scales: {
-          y: { beginAtZero: true, ticks: { precision: 0, color: chartTickColor }, grid: { color: chartGridColor, drawTicks: false }, border: { color: chartGridColor } },
-          x: { ticks: { color: chartTickColor }, grid: { display: false }, border: { color: chartGridColor } }
+          x: { beginAtZero: true, ticks: { precision: 0, color: chartTickColor }, grid: { color: chartGridColor, drawTicks: false }, border: { display: false, color: chartGridColor } },
+          y: { ticks: { color: chartTickColor, autoSkip: false }, grid: { display: false }, border: { display: false, color: chartGridColor } }
         }
       }
     });
