@@ -69,7 +69,7 @@ uvicorn main:app --reload
 - `GET /api/historico/cuarentena`: interacciones rechazadas por el ETL, con conteo `por_motivo`. Filtro opcional `motivo`; paginación con `limit` (1–200, por defecto 50) y `offset`.
 
 ### WebSocket
-- `WS /ws?token=<jwt>`: envía snapshot inicial y eventos de creación/actualización/eliminación con métricas recalculadas.
+- `WS /ws`: el primer mensaje debe ser `{"type":"auth","token":"<jwt>"}` (el token nunca va en la URL); después envía snapshot inicial y eventos de creación/actualización/eliminación con métricas recalculadas.
 
 ## Notas de privacidad
 
