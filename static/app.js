@@ -48,8 +48,9 @@
   }
 
   function refreshChartThemes() {
-    chartGridColor = cssVar('--chart-grid');
-    chartTickColor = cssVar('--chart-tick');
+    aplicarDefaultsChart();
+    chartGridColor = colorRejilla();
+    chartTickColor = colorTexto();
     chartTooltip.backgroundColor = cssVar('--chart-tooltip-bg');
     chartTooltip.borderColor = cssVar('--chart-tooltip-border');
     chartTooltip.titleColor = cssVar('--chart-tooltip-text');
@@ -75,7 +76,12 @@
         const surface = cssVar('--bg-card');
         chart.data.datasets.forEach((dataset) => { dataset.borderColor = surface; });
       }
-      chart.update('none');
+      // Las ciudades usan el color de acento del tema, que cambia entre claro y oscuro.
+      if (chart.canvas?.id === 'chartCiudades') {
+        const acento = cssVar('--acento');
+        chart.data.datasets.forEach((dataset) => { dataset.backgroundColor = acento; dataset.borderColor = acento; });
+      }
+      chart.update();
     });
   }
 
@@ -283,9 +289,27 @@
     return charts[id];
   }
 
-  const palette = ['#3B6E8C', '#C86D44', '#D99B26', '#4E9A7E', '#5B8FB9', '#B85D3B', '#8C7A5B', '#6B9E8A'];
-  let chartGridColor = cssVar('--chart-grid');
-  let chartTickColor = cssVar('--chart-tick');
+  const PALETA = ['#8FB3E0', '#7E9A8C', '#B9925C', '#C8814F', '#6F86A6', '#A3B8A9', '#9C8566', '#5E6E80'];
+
+  function colorTexto() {
+    return getComputedStyle(document.documentElement).getPropertyValue('--texto-2').trim() || '#9AA7B6';
+  }
+
+  function colorRejilla() {
+    return currentTheme() === 'light' ? 'rgba(52,84,127,.10)' : 'rgba(143,179,224,.08)';
+  }
+
+  function aplicarDefaultsChart() {
+    if (typeof Chart === 'undefined') return;
+    Chart.defaults.font.family = 'Inter, system-ui, sans-serif';
+    Chart.defaults.color = colorTexto();
+    Chart.defaults.borderColor = colorRejilla();
+    Chart.defaults.elements.line.borderWidth = 2;
+  }
+  aplicarDefaultsChart();
+
+  let chartGridColor = colorRejilla();
+  let chartTickColor = colorTexto();
   const chartTooltip = {
     backgroundColor: cssVar('--chart-tooltip-bg'),
     borderColor: cssVar('--chart-tooltip-border'),
@@ -298,13 +322,11 @@
   };
   const chartLegendLabels = { color: chartTickColor, padding: 12, usePointStyle: true, boxWidth: 8 };
 
-  const HEAT_STOPS = [[59, 110, 140], [217, 155, 38], [200, 109, 68]];
+  // Escala del mapa de calor: de --tarjeta-2 (sin actividad) a --acento (máxima). Al usar variables CSS
+  // se adapta sola al cambiar de tema.
   function heatColor(ratio) {
-    const t = Math.max(0, Math.min(1, ratio)) * (HEAT_STOPS.length - 1);
-    const i = Math.min(Math.floor(t), HEAT_STOPS.length - 2);
-    const f = t - i;
-    const rgb = HEAT_STOPS[i].map((channel, k) => Math.round(channel + (HEAT_STOPS[i + 1][k] - channel) * f));
-    return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${0.16 + ratio * 0.78})`;
+    const pct = Math.round(Math.max(0, Math.min(1, ratio)) * 100);
+    return `color-mix(in srgb, var(--acento) ${pct}%, var(--tarjeta-2))`;
   }
 
   function updateRealtimeCharts(metricas) {
@@ -313,7 +335,7 @@
     const canalNombres = canalLabels.map(etiqueta);
     ensureChart('chartCanal', {
       type: 'bar',
-      data: { labels: canalNombres, datasets: [{ label: 'Interacciones', data: canalValues, backgroundColor: palette[0], borderColor: palette[4], borderWidth: 1, borderRadius: 6 }] },
+      data: { labels: canalNombres, datasets: [{ label: 'Interacciones', data: canalValues, backgroundColor: PALETA[0], borderColor: PALETA[0], borderWidth: 0, borderRadius: 4 }] },
       options: {
         responsive: true,
         maintainAspectRatio: false,
@@ -333,12 +355,12 @@
         labels: temaLabels.map(etiqueta),
         datasets: [{
           data: temaValues,
-          backgroundColor: temaLabels.map((_, i) => palette[i % palette.length]),
+          backgroundColor: temaLabels.map((_, i) => PALETA[i % PALETA.length]),
           borderColor: cssVar('--bg-card'),
           borderWidth: 1,
-          borderRadius: 6,
-          hoverBorderRadius: 6,
-          hoverBorderColor: palette[2],
+          borderRadius: 4,
+          hoverBorderRadius: 4,
+          hoverBorderColor: cssVar('--bg-card'),
           hoverOffset: 4
         }]
       },
@@ -365,7 +387,7 @@
         const v = Number(heatmap?.[d]?.[b] || 0);
         const ratio = max ? v / max : 0;
         const bg = heatColor(ratio);
-        const color = ratio > 0.55 ? '#fff' : 'var(--text-primary)';
+        const color = ratio > 0.55 ? 'var(--bg)' : 'var(--texto)';
         html += `<td class="cell" style="background:${bg};color:${color}">${v}</td>`;
       });
       html += '</tr>';
@@ -512,7 +534,7 @@
     const plat = data.por_plataforma_principal || [];
     ensureChart('chartPlataforma', {
       type: 'bar',
-      data: { labels: plat.map(x => (x.plataforma_principal ? etiqueta(x.plataforma_principal) : 'Sin dato')), datasets: [{ label: 'Miembros', data: plat.map(x => x.total), backgroundColor: palette[3], borderColor: palette[7], borderWidth: 1, borderRadius: 6 }] },
+      data: { labels: plat.map(x => (x.plataforma_principal ? etiqueta(x.plataforma_principal) : 'Sin dato')), datasets: [{ label: 'Miembros', data: plat.map(x => x.total), backgroundColor: PALETA[1], borderColor: PALETA[1], borderWidth: 0, borderRadius: 4 }] },
       options: {
         indexAxis: 'y',
         responsive: true,
@@ -533,12 +555,12 @@
         labels: riesgoLabels,
         datasets: [{
           data: riesgoLabels.map(l => riesgo[l] || 0),
-          backgroundColor: [palette[2], palette[1], palette[3]],
+          backgroundColor: [PALETA[3], PALETA[2], PALETA[1]],
           borderColor: cssVar('--bg-card'),
           borderWidth: 1,
-          borderRadius: 6,
-          hoverBorderRadius: 6,
-          hoverBorderColor: palette[2],
+          borderRadius: 4,
+          hoverBorderRadius: 4,
+          hoverBorderColor: cssVar('--bg-card'),
           hoverOffset: 4
         }]
       },
@@ -557,7 +579,7 @@
       type: 'bar',
       data: {
         labels: ciudadesNombres.map(n => (n.length > MAX_ETIQUETA ? `${n.slice(0, MAX_ETIQUETA - 1)}…` : n)),
-        datasets: [{ label: 'Miembros', data: ciudades.map(c => c.total), backgroundColor: palette[0], borderColor: palette[4], borderWidth: 1, borderRadius: 4, maxBarThickness: 22 }]
+        datasets: [{ label: 'Miembros', data: ciudades.map(c => c.total), backgroundColor: cssVar('--acento'), borderColor: cssVar('--acento'), borderWidth: 0, borderRadius: 4, maxBarThickness: 22 }]
       },
       options: {
         indexAxis: 'y',
