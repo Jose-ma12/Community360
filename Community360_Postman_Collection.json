@@ -1,350 +1,2176 @@
 {
   "info": {
-    "name": "Community360 API",
-    "_postman_id": "b8f7d8d2-8c40-4bb4-a0db-0b7f2f0f2b01",
-    "description": "Colección Postman v2.1 para Community360 (Fases 3-6). Usa {{base_url}} y {{jwt_token}}. Las operaciones CRUD se ejecutan exclusivamente desde Postman.",
+    "name": "Community360 · Pruebas de entrega",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
-  "variable": [
-    { "key": "base_url", "value": "http://127.0.0.1:8000" },
-    { "key": "admin_password", "value": "" },
-    { "key": "jwt_token", "value": "" },
-    { "key": "id_interaccion_test", "value": "I9001" },
-    { "key": "id_usuario_test", "value": "U000001" }
-  ],
   "item": [
     {
-      "name": "0) Health",
-      "event": [
+      "name": "1 · Autenticación (Fase 3)",
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
-              "const json = pm.response.json();",
-              "pm.test('D1 y Firestore ok', function () { pm.expect(json.d1).to.eql('ok'); pm.expect(json.firestore).to.eql('ok'); });"
-            ]
+          "name": "1.1 Estado del servicio",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Servicios en ok', function () {",
+                  "    pm.expect(pm.response.json()).to.eql({ api: 'ok', d1: 'ok', firestore: 'ok' });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/health",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "health"
+              ]
+            }
           }
-        }
-      ],
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": { "raw": "{{base_url}}/api/health", "host": ["{{base_url}}"], "path": ["api", "health"] }
-      }
-    },
-    {
-      "name": "1) Login JWT",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
-              "const json = pm.response.json();",
-              "pm.test('Token presente', function () { pm.expect(json.access_token).to.be.a('string').and.not.empty; });",
-              "pm.test('Token_type Bearer', function () { pm.expect(json.token_type).to.eql('Bearer'); });",
-              "pm.collectionVariables.set('jwt_token', json.access_token);",
-              "pm.test('jwt_token guardado', function () { pm.expect(pm.collectionVariables.get('jwt_token')).to.eql(json.access_token); });"
-            ]
-          }
-        }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"username\": \"admin_c360\",\n  \"password\": \"{{admin_password}}\"\n}"
         },
-        "url": { "raw": "{{base_url}}/api/auth/login", "host": ["{{base_url}}"], "path": ["api", "auth", "login"] }
-      }
-    },
-    {
-      "name": "2) Verificar sesión",
-      "event": [
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
-              "pm.test('Sesión válida', function () { pm.expect(pm.response.json().ok).to.eql(true); });"
-            ]
+          "name": "1.2 Consultar sin token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 401', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones"
+              ]
+            }
           }
-        }
-      ],
-      "request": {
-        "method": "GET",
-        "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
-        "url": { "raw": "{{base_url}}/api/auth/verify", "host": ["{{base_url}}"], "path": ["api", "auth", "verify"] }
-      }
-    },
-    {
-      "name": "3) GET Históricos Dashboard (D1 + Firestore)",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
-              "const json = pm.response.json();",
-              "pm.test('1068 usuarios reales', function () { pm.expect(json.resumen_usuarios.total_usuarios).to.eql(1068); });",
-              "pm.test('897 con consentimiento', function () { pm.expect(json.resumen_usuarios.con_consentimiento_geo).to.eql(897); });",
-              "pm.test('171 sin consentimiento', function () { pm.expect(json.resumen_usuarios.sin_consentimiento_geo).to.eql(171); });",
-              "pm.test('793 en cuarentena', function () { pm.expect(json.interacciones_cuarentena).to.eql(793); });",
-              "pm.test('Firestore cargado', function () { pm.expect(json.total_interacciones).to.be.above(0); pm.expect(json.metricas_tiempo_real).to.have.property('por_canal'); });"
-            ]
-          }
-        }
-      ],
-      "request": {
-        "method": "GET",
-        "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
-        "url": { "raw": "{{base_url}}/api/historico/dashboard", "host": ["{{base_url}}"], "path": ["api", "historico", "dashboard"] }
-      }
-    },
-    {
-      "name": "3b) GET Históricos usuarios",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
-              "pm.test('Lista paginada', function () { const j = pm.response.json(); pm.expect(j.usuarios).to.be.an('array'); pm.expect(j.usuarios.length).to.be.at.most(10); });"
-            ]
-          }
-        }
-      ],
-      "request": {
-        "method": "GET",
-        "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
-        "url": {
-          "raw": "{{base_url}}/api/historico/usuarios?plataforma=Discord&estatus=activo&limit=10&offset=0",
-          "host": ["{{base_url}}"],
-          "path": ["api", "historico", "usuarios"],
-          "query": [
-            { "key": "plataforma", "value": "Discord" },
-            { "key": "estatus", "value": "activo" },
-            { "key": "limit", "value": "10" },
-            { "key": "offset", "value": "0" }
-          ]
-        }
-      }
-    },
-    {
-      "name": "3c) GET Histórico de un usuario",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
-              "pm.test('ID coincide', function () { pm.expect(pm.response.json().id_usuario).to.eql(pm.collectionVariables.get('id_usuario_test')); });"
-            ]
-          }
-        }
-      ],
-      "request": {
-        "method": "GET",
-        "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
-        "url": { "raw": "{{base_url}}/api/historico/usuarios/{{id_usuario_test}}", "host": ["{{base_url}}"], "path": ["api", "historico", "usuarios", "{{id_usuario_test}}"] }
-      }
-    },
-    {
-      "name": "3d) GET Cuarentena",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
-              "pm.test('793 en cuarentena', function () { pm.expect(pm.response.json().total).to.eql(793); });"
-            ]
-          }
-        }
-      ],
-      "request": {
-        "method": "GET",
-        "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
-        "url": {
-          "raw": "{{base_url}}/api/historico/cuarentena?limit=10&offset=0",
-          "host": ["{{base_url}}"],
-          "path": ["api", "historico", "cuarentena"],
-          "query": [
-            { "key": "limit", "value": "10" },
-            { "key": "offset", "value": "0" }
-          ]
-        }
-      }
-    },
-    {
-      "name": "4) GET Lista de interacciones",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
-              "pm.test('Lista devuelta', function () { pm.expect(pm.response.json().interacciones).to.be.an('array'); });"
-            ]
-          }
-        }
-      ],
-      "request": {
-        "method": "GET",
-        "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
-        "url": { "raw": "{{base_url}}/api/interacciones", "host": ["{{base_url}}"], "path": ["api", "interacciones"] }
-      }
-    },
-    {
-      "name": "5) POST Nueva interacción válida",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Status 201', function () { pm.response.to.have.status(201); });",
-              "pm.test('Sin datos geo y regla de privacidad', function () { const j = pm.response.json(); pm.expect(j.auditoria.regla_privacidad).to.eql('sin_datos_geo'); pm.expect(j).to.not.have.property('latitud'); pm.expect(j).to.not.have.property('longitud'); });"
-            ]
-          }
-        }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [
-          { "key": "Authorization", "value": "Bearer {{jwt_token}}" },
-          { "key": "Content-Type", "value": "application/json" }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"id_interaccion\": \"{{id_interaccion_test}}\",\n  \"id_usuario\": \"{{id_usuario_test}}\",\n  \"timestamp\": \"2026-11-23T20:15:00Z\",\n  \"canal\": \"Telegram\",\n  \"tipo\": \"mensaje\",\n  \"texto\": \"Prueba de integración Community360 desde Postman\",\n  \"tema\": \"eventos_convenciones\",\n  \"sentimiento\": 0.85,\n  \"idioma\": \"es\",\n  \"dispositivo\": \"Escritorio\",\n  \"reacciones_recibidas\": 3,\n  \"etiquetas\": [\"prueba\", \"postman\"]\n}"
         },
-        "url": { "raw": "{{base_url}}/api/interacciones", "host": ["{{base_url}}"], "path": ["api", "interacciones"] }
-      }
-    },
-    {
-      "name": "6) GET Interacción creada",
-      "event": [
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
-              "pm.test('ID coincide', function () { pm.expect(pm.response.json().id_interaccion).to.eql(pm.collectionVariables.get('id_interaccion_test')); });"
-            ]
+          "name": "1.3 Token falso",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 401', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer token.falso.123"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones"
+              ]
+            }
           }
-        }
-      ],
-      "request": {
-        "method": "GET",
-        "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
-        "url": { "raw": "{{base_url}}/api/interacciones/{{id_interaccion_test}}", "host": ["{{base_url}}"], "path": ["api", "interacciones", "{{id_interaccion_test}}"] }
-      }
-    },
-    {
-      "name": "7) PUT Modificar interacción",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
-              "pm.test('Cambios aplicados', function () { pm.expect(pm.response.json().reacciones_recibidas).to.eql(5); });"
-            ]
-          }
-        }
-      ],
-      "request": {
-        "method": "PUT",
-        "header": [
-          { "key": "Authorization", "value": "Bearer {{jwt_token}}" },
-          { "key": "Content-Type", "value": "application/json" }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"texto\": \"Interacción actualizada desde Postman (PUT)\",\n  \"sentimiento\": 0.92,\n  \"reacciones_recibidas\": 5,\n  \"etiquetas\": [\"prueba\", \"postman\", \"actualizado\"]\n}"
         },
-        "url": { "raw": "{{base_url}}/api/interacciones/{{id_interaccion_test}}", "host": ["{{base_url}}"], "path": ["api", "interacciones", "{{id_interaccion_test}}"] }
-      }
-    },
-    {
-      "name": "8) DELETE Eliminar interacción",
-      "event": [
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
-              "pm.test('Eliminación confirmada', function () { pm.expect(pm.response.json().ok).to.eql(true); });"
-            ]
+          "name": "1.4 Contraseña incorrecta",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 401', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "pm.test('La respuesta incluye \"Credenciales inválidas\"', function () {",
+                  "    pm.expect(pm.response.text()).to.include('Credenciales inválidas');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{admin_username}}\",\n  \"password\": \"contraseña-incorrecta\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
           }
-        }
-      ],
-      "request": {
-        "method": "DELETE",
-        "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
-        "url": { "raw": "{{base_url}}/api/interacciones/{{id_interaccion_test}}", "host": ["{{base_url}}"], "path": ["api", "interacciones", "{{id_interaccion_test}}"] }
-      }
-    },
-    {
-      "name": "9) POST Error 400 (id_usuario inexistente)",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Status 400', function () { pm.response.to.have.status(400); });",
-              "pm.test('Detalle de error presente', function () { pm.expect(pm.response.json().detail).to.be.a('string'); });"
-            ]
-          }
-        }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [
-          { "key": "Authorization", "value": "Bearer {{jwt_token}}" },
-          { "key": "Content-Type", "value": "application/json" }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"id_interaccion\": \"I9002\",\n  \"id_usuario\": \"U999999\",\n  \"timestamp\": \"2026-11-23T20:20:00Z\",\n  \"canal\": \"Discord\",\n  \"tipo\": \"mensaje\",\n  \"texto\": \"Debe fallar por integridad referencial\",\n  \"tema\": \"videojuegos\",\n  \"sentimiento\": 0.1,\n  \"idioma\": \"es\",\n  \"dispositivo\": \"Android\",\n  \"reacciones_recibidas\": 0,\n  \"etiquetas\": [\"error\", \"fk\"]\n}"
         },
-        "url": { "raw": "{{base_url}}/api/interacciones", "host": ["{{base_url}}"], "path": ["api", "interacciones"] }
-      }
-    },
-    {
-      "name": "10) Cerrar sesión",
-      "event": [
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
-              "pm.test('Sesión cerrada', function () { pm.expect(pm.response.json().ok).to.eql(true); });"
-            ]
+          "name": "1.5 Usuario inexistente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 401', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "pm.test('La respuesta incluye \"Credenciales inválidas\"', function () {",
+                  "    pm.expect(pm.response.text()).to.include('Credenciales inválidas');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"usuario_que_no_existe\",\n  \"password\": \"x\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "1.6 Login sin datos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 422', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "1.7 Límite de intentos",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "for (let i = 0; i < 5; i++) {",
+                  "    pm.sendRequest({",
+                  "        url: pm.collectionVariables.get('base_url') + '/api/auth/login',",
+                  "        method: 'POST',",
+                  "        header: { 'Content-Type': 'application/json' },",
+                  "        body: { mode: 'raw', raw: JSON.stringify({ username: 'prueba_bloqueo_postman', password: 'x' }) }",
+                  "    }, function () {});",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 429', function () {",
+                  "    pm.response.to.have.status(429);",
+                  "});",
+                  "pm.test('La respuesta incluye \"Demasiados intentos\"', function () {",
+                  "    pm.expect(pm.response.text()).to.include('Demasiados intentos');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"prueba_bloqueo_postman\",\n  \"password\": \"x\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "1.8 Login correcto",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Entrega access_token y token_type Bearer', function () {",
+                  "    pm.expect(json.access_token).to.be.a('string').and.not.empty;",
+                  "    pm.expect(json.token_type).to.eql('Bearer');",
+                  "});",
+                  "pm.test('La respuesta no expone password', function () {",
+                  "    pm.expect(JSON.stringify(json).toLowerCase()).to.not.include('password');",
+                  "});",
+                  "pm.test('La cookie de sesión es HttpOnly', function () {",
+                  "    const cookies = pm.response.headers.all()",
+                  "        .filter(h => h.key.toLowerCase() === 'set-cookie')",
+                  "        .map(h => h.value).join('; ').toLowerCase();",
+                  "    pm.expect(cookies).to.include('httponly');",
+                  "});",
+                  "if (json.access_token) {",
+                  "    pm.collectionVariables.set('jwt_token', json.access_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{admin_username}}\",\n  \"password\": \"{{admin_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "1.9 Verificar sesión",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('ok es true', function () {",
+                  "    pm.expect(pm.response.json().ok).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/verify",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "verify"
+              ]
+            }
           }
         }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
-        "url": { "raw": "{{base_url}}/api/auth/logout", "host": ["{{base_url}}"], "path": ["api", "auth", "logout"] }
-      }
+      ]
+    },
+    {
+      "name": "2 · Consultas históricas por REST (Fases 4 y 6B)",
+      "item": [
+        {
+          "name": "2.1 Indicadores históricos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Resumen de usuarios consistente', function () {",
+                  "    const r = json.resumen_usuarios;",
+                  "    pm.expect(r.total_usuarios).to.be.above(0);",
+                  "    pm.expect(r.con_consentimiento_geo + r.sin_consentimiento_geo).to.eql(r.total_usuarios);",
+                  "});",
+                  "pm.test('Incluye cuarentena, riesgo y top de ciudades', function () {",
+                  "    pm.expect(json).to.have.property('interacciones_cuarentena');",
+                  "    pm.expect(json).to.have.property('riesgo_abandono');",
+                  "    pm.expect(json.top_ciudades_autorizadas).to.be.an('array');",
+                  "});",
+                  "pm.test('No filtra SQL', function () {",
+                  "    pm.expect(pm.response.text()).to.not.include('SELECT');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/historico/dashboard",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "historico",
+                "dashboard"
+              ]
+            }
+          }
+        },
+        {
+          "name": "2.2 Padrón con filtros",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const usuarios = pm.response.json().usuarios;",
+                  "pm.test('Máximo 10 usuarios', function () {",
+                  "    pm.expect(usuarios).to.be.an('array');",
+                  "    pm.expect(usuarios.length).to.be.at.most(10);",
+                  "});",
+                  "pm.test('Sin consentimiento no hay ciudad ni estado', function () {",
+                  "    usuarios.filter(u => !u.consentimiento_datos).forEach(u => {",
+                  "        pm.expect(u.ciudad == null).to.be.true;",
+                  "        pm.expect(u.estado == null).to.be.true;",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/historico/usuarios?limit=10&offset=0",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "historico",
+                "usuarios"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "2.3 Un usuario",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/historico/usuarios/{{id_usuario_test}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "historico",
+                "usuarios",
+                "{{id_usuario_test}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "2.4 Usuario con id inválido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/historico/usuarios/abc",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "historico",
+                "usuarios",
+                "abc"
+              ]
+            }
+          }
+        },
+        {
+          "name": "2.5 Cuarentena",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('total > 0', function () {",
+                  "    pm.expect(pm.response.json().total).to.be.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/historico/cuarentena?limit=10&offset=0",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "historico",
+                "cuarentena"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "2.6 Lista de interacciones",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Máximo 10 elementos y total > 0', function () {",
+                  "    pm.expect(json.interacciones.length).to.be.at.most(10);",
+                  "    pm.expect(json.total).to.be.above(0);",
+                  "});",
+                  "pm.test('Sin datos geográficos', function () {",
+                  "    json.interacciones.forEach(i => {",
+                  "        pm.expect(i).to.not.have.any.keys('ciudad', 'latitud', 'longitud');",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones?limit=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "2.7 Límite fuera de rango",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 422', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones?limit=0",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "0"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 · CRUD desde Postman con efecto en vivo (Fases 4, 5 y 6A)",
+      "item": [
+        {
+          "name": "3.0 Preparación",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 200 o 404', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones/{{id_interaccion_test}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones",
+                "{{id_interaccion_test}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "3.1 Crear interacción",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('id_interaccion coincide', function () {",
+                  "    pm.expect(json.id_interaccion).to.eql(pm.collectionVariables.get('id_interaccion_test'));",
+                  "});",
+                  "pm.test('longitud_texto coincide con el texto', function () {",
+                  "    pm.expect(json.longitud_texto).to.eql(json.texto.length);",
+                  "});",
+                  "pm.test('timestamp en formato UTC ISO', function () {",
+                  "    pm.expect(json.timestamp).to.match(/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$/);",
+                  "});",
+                  "pm.test('Sin datos geográficos', function () {",
+                  "    pm.expect(json).to.not.have.any.keys('ciudad', 'latitud', 'longitud', 'pais', 'estado');",
+                  "});",
+                  "pm.test('Auditoría con actor', function () {",
+                  "    pm.expect(json.auditoria.actor).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_interaccion\": \"{{id_interaccion_test}}\",\n  \"id_usuario\": \"{{id_usuario_test}}\",\n  \"timestamp\": \"{{$isoTimestamp}}\",\n  \"canal\": \"Discord\",\n  \"tipo\": \"mensaje\",\n  \"texto\": \"Prueba en vivo desde Postman: ¿quién va a la convención?\",\n  \"tema\": \"eventos_convenciones\",\n  \"sentimiento\": 0.8,\n  \"idioma\": \"es\",\n  \"dispositivo\": \"Web\",\n  \"reacciones_recibidas\": 5,\n  \"etiquetas\": [\n    \"evento\",\n    \"demo\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Con el dashboard abierto: el total sube 1, la bitácora muestra \"Nueva interacción\" y suben Discord y Eventos y convenciones sin recargar"
+          }
+        },
+        {
+          "name": "3.2 Consultar la creada",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"canal es 'Discord'\", function () {",
+                  "    pm.expect(pm.response.json().canal).to.eql('Discord');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones/{{id_interaccion_test}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones",
+                "{{id_interaccion_test}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "3.3 Duplicado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 409', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_interaccion\": \"{{id_interaccion_test}}\",\n  \"id_usuario\": \"{{id_usuario_test}}\",\n  \"timestamp\": \"{{$isoTimestamp}}\",\n  \"canal\": \"Discord\",\n  \"tipo\": \"mensaje\",\n  \"texto\": \"Prueba en vivo desde Postman: ¿quién va a la convención?\",\n  \"tema\": \"eventos_convenciones\",\n  \"sentimiento\": 0.8,\n  \"idioma\": \"es\",\n  \"dispositivo\": \"Web\",\n  \"reacciones_recibidas\": 5,\n  \"etiquetas\": [\n    \"evento\",\n    \"demo\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "3.4 Modificar tema y sentimiento",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.test('Tema y sentimiento actualizados', function () {",
+                  "    pm.expect(json.tema).to.eql('musica');",
+                  "    pm.expect(json.sentimiento).to.eql(-0.4);",
+                  "});",
+                  "pm.test('Auditoría con fecha de actualización', function () {",
+                  "    pm.expect(json.auditoria.fecha_actualizacion_utc).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones/{{id_interaccion_test}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones",
+                "{{id_interaccion_test}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tema\": \"musica\",\n  \"sentimiento\": -0.4\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "La bitácora muestra \"Interacción editada\", baja el sentimiento promedio y la dona pasa la interacción a Música"
+          }
+        },
+        {
+          "name": "3.5 Convertir en reacción",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Sin texto y longitud 0', function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.texto).to.eql(null);",
+                  "    pm.expect(json.longitud_texto).to.eql(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones/{{id_interaccion_test}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones",
+                "{{id_interaccion_test}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo\": \"reaccion\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Las reacciones no llevan texto: cambia la longitud media"
+          }
+        },
+        {
+          "name": "3.6 Eliminar",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('id_interaccion coincide', function () {",
+                  "    pm.expect(pm.response.json().id_interaccion).to.eql(pm.collectionVariables.get('id_interaccion_test'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones/{{id_interaccion_test}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones",
+                "{{id_interaccion_test}}"
+              ]
+            },
+            "description": "El total regresa a su valor original y la bitácora muestra \"Interacción eliminada\""
+          }
+        },
+        {
+          "name": "3.7 Consultar después de borrar",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones/{{id_interaccion_test}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones",
+                "{{id_interaccion_test}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "3.8 Borrar otra vez",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones/{{id_interaccion_test}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones",
+                "{{id_interaccion_test}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4 · Validaciones y códigos HTTP (Fase 4)",
+      "item": [
+        {
+          "name": "4.1 Sin token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 401', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_interaccion\": \"I9900099\",\n  \"id_usuario\": \"{{id_usuario_test}}\",\n  \"timestamp\": \"{{$isoTimestamp}}\",\n  \"canal\": \"Discord\",\n  \"tipo\": \"mensaje\",\n  \"texto\": \"Prueba en vivo desde Postman: ¿quién va a la convención?\",\n  \"tema\": \"eventos_convenciones\",\n  \"sentimiento\": 0.8,\n  \"idioma\": \"es\",\n  \"dispositivo\": \"Web\",\n  \"reacciones_recibidas\": 5,\n  \"etiquetas\": [\n    \"evento\",\n    \"demo\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "4.2 Usuario inexistente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_interaccion\": \"I9900099\",\n  \"id_usuario\": \"U999999\",\n  \"timestamp\": \"{{$isoTimestamp}}\",\n  \"canal\": \"Discord\",\n  \"tipo\": \"mensaje\",\n  \"texto\": \"Prueba en vivo desde Postman: ¿quién va a la convención?\",\n  \"tema\": \"eventos_convenciones\",\n  \"sentimiento\": 0.8,\n  \"idioma\": \"es\",\n  \"dispositivo\": \"Web\",\n  \"reacciones_recibidas\": 5,\n  \"etiquetas\": [\n    \"evento\",\n    \"demo\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "4.3 Canal inválido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 422', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_interaccion\": \"I9900099\",\n  \"id_usuario\": \"{{id_usuario_test}}\",\n  \"timestamp\": \"{{$isoTimestamp}}\",\n  \"canal\": \"MySpace\",\n  \"tipo\": \"mensaje\",\n  \"texto\": \"Prueba en vivo desde Postman: ¿quién va a la convención?\",\n  \"tema\": \"eventos_convenciones\",\n  \"sentimiento\": 0.8,\n  \"idioma\": \"es\",\n  \"dispositivo\": \"Web\",\n  \"reacciones_recibidas\": 5,\n  \"etiquetas\": [\n    \"evento\",\n    \"demo\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "4.4 Tema inválido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 422', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_interaccion\": \"I9900099\",\n  \"id_usuario\": \"{{id_usuario_test}}\",\n  \"timestamp\": \"{{$isoTimestamp}}\",\n  \"canal\": \"Discord\",\n  \"tipo\": \"mensaje\",\n  \"texto\": \"Prueba en vivo desde Postman: ¿quién va a la convención?\",\n  \"tema\": \"Tecnología\",\n  \"sentimiento\": 0.8,\n  \"idioma\": \"es\",\n  \"dispositivo\": \"Web\",\n  \"reacciones_recibidas\": 5,\n  \"etiquetas\": [\n    \"evento\",\n    \"demo\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "4.5 Tipo inválido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 422', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_interaccion\": \"I9900099\",\n  \"id_usuario\": \"{{id_usuario_test}}\",\n  \"timestamp\": \"{{$isoTimestamp}}\",\n  \"canal\": \"Discord\",\n  \"tipo\": \"encuesta\",\n  \"texto\": \"Prueba en vivo desde Postman: ¿quién va a la convención?\",\n  \"tema\": \"eventos_convenciones\",\n  \"sentimiento\": 0.8,\n  \"idioma\": \"es\",\n  \"dispositivo\": \"Web\",\n  \"reacciones_recibidas\": 5,\n  \"etiquetas\": [\n    \"evento\",\n    \"demo\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "4.6 Sentimiento fuera de rango",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 422', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_interaccion\": \"I9900099\",\n  \"id_usuario\": \"{{id_usuario_test}}\",\n  \"timestamp\": \"{{$isoTimestamp}}\",\n  \"canal\": \"Discord\",\n  \"tipo\": \"mensaje\",\n  \"texto\": \"Prueba en vivo desde Postman: ¿quién va a la convención?\",\n  \"tema\": \"eventos_convenciones\",\n  \"sentimiento\": 2,\n  \"idioma\": \"es\",\n  \"dispositivo\": \"Web\",\n  \"reacciones_recibidas\": 5,\n  \"etiquetas\": [\n    \"evento\",\n    \"demo\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "4.7 Reacciones negativas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 422', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_interaccion\": \"I9900099\",\n  \"id_usuario\": \"{{id_usuario_test}}\",\n  \"timestamp\": \"{{$isoTimestamp}}\",\n  \"canal\": \"Discord\",\n  \"tipo\": \"mensaje\",\n  \"texto\": \"Prueba en vivo desde Postman: ¿quién va a la convención?\",\n  \"tema\": \"eventos_convenciones\",\n  \"sentimiento\": 0.8,\n  \"idioma\": \"es\",\n  \"dispositivo\": \"Web\",\n  \"reacciones_recibidas\": -1,\n  \"etiquetas\": [\n    \"evento\",\n    \"demo\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "4.8 Timestamp sin zona horaria",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 422', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_interaccion\": \"I9900099\",\n  \"id_usuario\": \"{{id_usuario_test}}\",\n  \"timestamp\": \"2026-11-20T18:00:00\",\n  \"canal\": \"Discord\",\n  \"tipo\": \"mensaje\",\n  \"texto\": \"Prueba en vivo desde Postman: ¿quién va a la convención?\",\n  \"tema\": \"eventos_convenciones\",\n  \"sentimiento\": 0.8,\n  \"idioma\": \"es\",\n  \"dispositivo\": \"Web\",\n  \"reacciones_recibidas\": 5,\n  \"etiquetas\": [\n    \"evento\",\n    \"demo\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "4.9 Timestamp en el futuro",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 422', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_interaccion\": \"I9900099\",\n  \"id_usuario\": \"{{id_usuario_test}}\",\n  \"timestamp\": \"2030-01-01T00:00:00Z\",\n  \"canal\": \"Discord\",\n  \"tipo\": \"mensaje\",\n  \"texto\": \"Prueba en vivo desde Postman: ¿quién va a la convención?\",\n  \"tema\": \"eventos_convenciones\",\n  \"sentimiento\": 0.8,\n  \"idioma\": \"es\",\n  \"dispositivo\": \"Web\",\n  \"reacciones_recibidas\": 5,\n  \"etiquetas\": [\n    \"evento\",\n    \"demo\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "4.10 Idioma inválido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 422', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_interaccion\": \"I9900099\",\n  \"id_usuario\": \"{{id_usuario_test}}\",\n  \"timestamp\": \"{{$isoTimestamp}}\",\n  \"canal\": \"Discord\",\n  \"tipo\": \"mensaje\",\n  \"texto\": \"Prueba en vivo desde Postman: ¿quién va a la convención?\",\n  \"tema\": \"eventos_convenciones\",\n  \"sentimiento\": 0.8,\n  \"idioma\": \"Español\",\n  \"dispositivo\": \"Web\",\n  \"reacciones_recibidas\": 5,\n  \"etiquetas\": [\n    \"evento\",\n    \"demo\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "4.11 Texto vacío",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 422', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_interaccion\": \"I9900099\",\n  \"id_usuario\": \"{{id_usuario_test}}\",\n  \"timestamp\": \"{{$isoTimestamp}}\",\n  \"canal\": \"Discord\",\n  \"tipo\": \"mensaje\",\n  \"texto\": \"\",\n  \"tema\": \"eventos_convenciones\",\n  \"sentimiento\": 0.8,\n  \"idioma\": \"es\",\n  \"dispositivo\": \"Web\",\n  \"reacciones_recibidas\": 5,\n  \"etiquetas\": [\n    \"evento\",\n    \"demo\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "4.12 Campo geográfico prohibido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 422', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_interaccion\": \"I9900099\",\n  \"id_usuario\": \"{{id_usuario_test}}\",\n  \"timestamp\": \"{{$isoTimestamp}}\",\n  \"canal\": \"Discord\",\n  \"tipo\": \"mensaje\",\n  \"texto\": \"Prueba en vivo desde Postman: ¿quién va a la convención?\",\n  \"tema\": \"eventos_convenciones\",\n  \"sentimiento\": 0.8,\n  \"idioma\": \"es\",\n  \"dispositivo\": \"Web\",\n  \"reacciones_recibidas\": 5,\n  \"etiquetas\": [\n    \"evento\",\n    \"demo\"\n  ],\n  \"ciudad\": \"Mérida\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "4.13 Falta el canal",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 422', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_interaccion\": \"I9900099\",\n  \"id_usuario\": \"{{id_usuario_test}}\",\n  \"timestamp\": \"{{$isoTimestamp}}\",\n  \"tipo\": \"mensaje\",\n  \"texto\": \"Prueba en vivo desde Postman: ¿quién va a la convención?\",\n  \"tema\": \"eventos_convenciones\",\n  \"sentimiento\": 0.8,\n  \"idioma\": \"es\",\n  \"dispositivo\": \"Web\",\n  \"reacciones_recibidas\": 5,\n  \"etiquetas\": [\n    \"evento\",\n    \"demo\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "4.14 id_interaccion inválido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 422', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_interaccion\": \"X1\",\n  \"id_usuario\": \"{{id_usuario_test}}\",\n  \"timestamp\": \"{{$isoTimestamp}}\",\n  \"canal\": \"Discord\",\n  \"tipo\": \"mensaje\",\n  \"texto\": \"Prueba en vivo desde Postman: ¿quién va a la convención?\",\n  \"tema\": \"eventos_convenciones\",\n  \"sentimiento\": 0.8,\n  \"idioma\": \"es\",\n  \"dispositivo\": \"Web\",\n  \"reacciones_recibidas\": 5,\n  \"etiquetas\": [\n    \"evento\",\n    \"demo\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "4.15 Actualizar sin campos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones/I9900099",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones",
+                "I9900099"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "4.16 Actualizar con null",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones/I9900099",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones",
+                "I9900099"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"canal\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "4.17 Actualizar con tema inválido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 422', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones/I9900099",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones",
+                "I9900099"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tema\": \"Tecnología\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "4.18 Actualizar inexistente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones/I9900099",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones",
+                "I9900099"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tema\": \"musica\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "4.19 Consultar con id inválido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/interacciones/__x__",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "interacciones",
+                "__x__"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5 · Cierre de sesión (Fase 3)",
+      "item": [
+        {
+          "name": "5.1 Cerrar sesión",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Revocación persistida en D1', function () {",
+                  "    pm.expect(pm.response.json().revocacion_persistida_en_d1).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/logout",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
+            }
+          }
+        },
+        {
+          "name": "5.2 Token revocado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código HTTP 401', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "pm.test('La respuesta incluye \"Token revocado\"', function () {",
+                  "    pm.expect(pm.response.text()).to.include('Token revocado');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/verify",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "verify"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8000"
+    },
+    {
+      "key": "admin_username",
+      "value": "admin_c360"
+    },
+    {
+      "key": "admin_password",
+      "value": ""
+    },
+    {
+      "key": "jwt_token",
+      "value": ""
+    },
+    {
+      "key": "id_interaccion_test",
+      "value": "I9900001"
+    },
+    {
+      "key": "id_usuario_test",
+      "value": "U000001"
     }
   ]
 }
