@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Community360 | Dashboard</title>
+  <title>Community360 | Panel</title>
   <script>
     (function () {
       var theme = 'dark';
@@ -47,9 +47,9 @@
     </nav>
 
     <div class="topbar-actions">
-      <div class="status-pill" title="Estado de WebSocket">
+      <div class="status-pill" title="Estado de la conexión">
         <span id="wsDot" class="dot"></span>
-        <span id="wsStatus">WS: en vivo</span>
+        <span id="wsStatus">En vivo</span>
       </div>
       <div class="timestamp" id="ultimaActualizacion">Última actualización: —</div>
       <button id="themeToggleBtn" class="theme-toggle icon-btn" type="button" aria-label="Cambiar tema" title="Cambiar tema">
@@ -65,48 +65,36 @@
 
   <div class="app-shell">
     <main class="app-main">
-      <h1 class="sr-only">Observatorio Analítico Community360</h1>
+      <h1 class="sr-only">Panel de la comunidad</h1>
 
       <section class="screen screen--tiempo-real" id="seccion-tiempo-real" aria-labelledby="titulo-tiempo-real">
-        <h2 class="sr-only" id="titulo-tiempo-real">Tiempo real · Firestore + WebSockets</h2>
+        <h2 class="sr-only" id="titulo-tiempo-real">Actividad en tiempo real</h2>
         <div class="kpi-hero">
           <article class="kpi-cell">
             <div class="label">Total de interacciones</div>
             <div class="value" id="kpiTotal">0</div>
-            <details class="formula">
-              <summary>Registros activos en Firestore</summary>
-              <p>N = count(i in Firestore if i.activa)</p>
-            </details>
+            <p class="muted subtitle">Interacciones registradas</p>
           </article>
           <article class="kpi-cell">
             <div class="label">Sentimiento promedio</div>
             <div class="value" id="kpiSentimiento">0</div>
-            <details class="formula">
-              <summary>Promedio aritmético (rango -1 a 1)</summary>
-              <p>S_prom = (1/N) * sum(sentimiento_i)</p>
-            </details>
+            <p class="muted subtitle">De -1 (negativo) a 1 (positivo)</p>
           </article>
           <article class="kpi-cell">
             <div class="label">Reacciones promedio</div>
             <div class="value" id="kpiReacciones">0</div>
-            <details class="formula">
-              <summary>Promedio de reacciones por interacción</summary>
-              <p>R_prom = (1/N) * sum(reacciones_i)</p>
-            </details>
+            <p class="muted subtitle">Por cada interacción</p>
           </article>
           <article class="kpi-cell">
             <div class="label">Longitud media de texto</div>
             <div class="value" id="kpiLongitud">0</div>
-            <details class="formula">
-              <summary>Caracteres promedio (excluye reacciones)</summary>
-              <p>L_prom = (1/M) * sum(len(texto_i)); M excluye reacciones</p>
-            </details>
+            <p class="muted subtitle">Caracteres por mensaje</p>
           </article>
         </div>
 
         <div class="screen-grid screen-grid--tiempo-real">
           <article class="card">
-            <h3>Interacciones por plataforma (canal)</h3>
+            <h3>Interacciones por plataforma</h3>
             <div class="chart-wrap"><canvas id="chartCanal"></canvas></div>
           </article>
           <article class="card">
@@ -120,13 +108,13 @@
         <h2 class="sr-only" id="titulo-pulso">Pulso en vivo</h2>
         <div class="screen-grid screen-grid--pulso">
           <article class="card">
-            <h3>Mapa de calor de actividad (UTC)</h3>
-            <p class="muted subtitle">Filas: Lun–Dom · Columnas: bloques de 4 horas UTC</p>
+            <h3>Actividad por día y horario</h3>
+            <p class="muted subtitle">Horario en tiempo universal, en bloques de 4 horas</p>
             <div class="heatmap" id="heatmapContainer"></div>
           </article>
           <article class="card">
-            <h3>Bitácora en vivo de eventos WebSocket</h3>
-            <div class="log" id="wsLog"><div class="empty">Sin eventos aún.</div></div>
+            <h3>Actividad reciente</h3>
+            <div class="log" id="wsLog"><div class="empty">Sin actividad aún.</div></div>
           </article>
         </div>
       </section>
@@ -134,16 +122,16 @@
       <section class="screen screen--interacciones" id="tabla-recientes" aria-labelledby="titulo-interacciones" hidden>
         <h2 class="sr-only" id="titulo-interacciones">Interacciones</h2>
         <article class="card table-card">
-          <h3>Últimas 10 interacciones activas</h3>
+          <h3>Últimas 10 interacciones</h3>
           <div class="table-wrap">
             <table class="data">
               <thead>
                 <tr>
-                  <th>ID</th><th>Usuario</th><th>Timestamp (UTC)</th><th>Canal</th><th>Tipo</th><th>Tema</th><th>Sent.</th><th>Reac.</th><th>Texto</th>
+                  <th>Folio</th><th>Usuario</th><th>Fecha y hora</th><th>Canal</th><th>Tipo</th><th>Tema</th><th>Sentimiento</th><th>Reacciones</th><th>Texto</th>
                 </tr>
               </thead>
               <tbody id="tablaInteracciones">
-                <tr><td colspan="9" class="empty">Cargando...</td></tr>
+                <tr><td colspan="9" class="empty">Cargando…</td></tr>
               </tbody>
             </table>
           </div>
@@ -151,29 +139,29 @@
       </section>
 
       <section class="screen screen--historico" id="seccion-historicos" aria-labelledby="titulo-historico" hidden>
-        <h2 class="sr-only" id="titulo-historico">Histórico · Cloudflare D1</h2>
-        <div class="banner" id="bannerPrivacidad">Verificación de privacidad: top ciudades calculado con INNER JOIN usuarios_ubicacion + usuarios WHERE consentimiento_datos = 1 (regla sin_datos_geo).</div>
+        <h2 class="sr-only" id="titulo-historico">Resumen histórico</h2>
+        <div class="banner" id="bannerPrivacidad">Privacidad: las ciudades solo incluyen a los miembros que autorizaron compartir su ubicación.</div>
 
         <div class="historico-kpis">
           <article class="kpi-mini">
             <div class="label">Miembros registrados</div>
             <div class="value" id="hTotalUsuarios">1068</div>
-            <details class="formula"><summary>Tabla: usuarios</summary><p>U = count(u in usuarios)</p></details>
+            <p class="muted subtitle">Total de la comunidad</p>
           </article>
           <article class="kpi-mini">
             <div class="label">Ubicación autorizada</div>
             <div class="value" id="hConConsent">897</div>
-            <details class="formula"><summary>consentimiento_datos = 1</summary><p>U_geo = count(u in usuarios where consentimiento_datos = 1)</p></details>
+            <p class="muted subtitle">Con permiso para mostrar su ciudad</p>
           </article>
           <article class="kpi-mini">
             <div class="label">Excluidos por privacidad</div>
             <div class="value" id="hSinConsent">171</div>
-            <details class="formula"><summary>consentimiento_datos = 0</summary><p>U_priv = count(u in usuarios where consentimiento_datos = 0)</p></details>
+            <p class="muted subtitle">Sin permiso: su ubicación se oculta</p>
           </article>
           <article class="kpi-mini">
             <div class="label">Interacciones en cuarentena</div>
             <div class="value" id="hCuarentena">793</div>
-            <details class="formula"><summary>Tabla: interacciones_cuarentena</summary><p>Q = count(i in interacciones_cuarentena)</p></details>
+            <p class="muted subtitle">Revisadas y apartadas por datos incompletos</p>
           </article>
         </div>
 

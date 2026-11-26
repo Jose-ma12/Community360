@@ -179,39 +179,77 @@
     if (wsStatus) wsStatus.textContent = text;
   }
 
-  const METODO_POR_EVENTO = {
-    interaccion_creada: 'POST',
-    interaccion_actualizada: 'PUT',
-    interaccion_eliminada: 'DELETE'
+  // Los datos llegan con claves técnicas (arte_comisiones, rsvp_evento...); solo se traducen al mostrarlos.
+  const ETIQUETAS = {
+    arte_comisiones: 'Arte y comisiones', reglas_moderacion: 'Reglas y moderación',
+    eventos_convenciones: 'Eventos y convenciones', videojuegos: 'Videojuegos',
+    memes_humor: 'Memes y humor', fursuits: 'Fursuits',
+    seguridad_privacidad: 'Seguridad y privacidad', musica: 'Música',
+    mensaje: 'Mensaje', comentario: 'Comentario', reaccion: 'Reacción',
+    respuesta_encuesta: 'Respuesta a encuesta', rsvp_evento: 'Confirmación a evento',
+    activo: 'Activo', en_riesgo: 'En riesgo', inactivo: 'Inactivo',
+    Escritorio: 'Escritorio', Web: 'Web', Android: 'Android', iOS: 'iOS'
   };
+  function etiqueta(v) {
+    if (v == null || v === '') return '—';
+    if (ETIQUETAS[v]) return ETIQUETAS[v];
+    const t = String(v).replace(/_/g, ' ');
+    return t.charAt(0).toUpperCase() + t.slice(1);
+  }
+
+  function aFecha(v) {
+    if (!v) return null;
+    // Python manda microsegundos (.176230Z); se recortan a milisegundos para que Date los entienda siempre.
+    const d = new Date(String(v).replace(/(\.\d{3})\d+/, '$1'));
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  function fmtFechaHora(v) {
+    const d = aFecha(v);
+    return d ? d.toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+  }
+  function fmtHora(v) {
+    const d = aFecha(v) || new Date();
+    return d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  }
+
+  // Cómo se presenta cada evento en la bitácora. data-method solo da el color de la insignia.
+  const EVENTOS_BITACORA = {
+    conexion: { texto: 'Conexión abierta' },
+    conexion_inicial: { texto: 'Conectado' },
+    interaccion_creada: { texto: 'Nueva interacción', metodo: 'POST' },
+    interaccion_actualizada: { texto: 'Interacción editada', metodo: 'PUT' },
+    interaccion_eliminada: { texto: 'Interacción eliminada', metodo: 'DELETE' },
+    error_metricas: { texto: 'Aviso', metodo: 'DELETE' }
+  };
+  const MENSAJE_ERROR_EN_VIVO = 'No se pudieron actualizar los datos en vivo. Reintentando…';
 
   function logWsEvent(evt) {
     if (!wsLog) return;
+    const tipo = evt.evento || evt.type || 'evento';
+    if (tipo === 'pong' || tipo === 'ack') return;
     if (wsLog.querySelector('.empty')) wsLog.innerHTML = '';
     const item = document.createElement('div');
     item.className = 'log-item';
-    const ts = evt.timestamp_utc || new Date().toISOString();
-    const tipo = evt.evento || evt.type || 'evento';
-    const metodo = METODO_POR_EVENTO[tipo] || (/^(POST|PUT|DELETE)$/i.test(tipo) ? tipo.toUpperCase() : null);
+    const info = EVENTOS_BITACORA[tipo] || { texto: etiqueta(tipo) };
     item.dataset.event = tipo;
     const actor = evt.actor ? ` · ${escapeHtml(evt.actor)}` : '';
     const detail = evt.interaccion?.id_interaccion ? ` · ${escapeHtml(evt.interaccion.id_interaccion)}` : '';
-    const badge = metodo
-      ? `<span class="method-badge" data-method="${metodo}">${metodo}</span>`
-      : `<span class="event-tag">${escapeHtml(tipo)}</span>`;
-    item.innerHTML = `<div class="meta"><span class="event-label">${badge}${actor}${detail}</span><span>${escapeHtml(ts)}</span></div><div>${summarizeEvent(evt)}</div>`;
+    const badge = info.metodo
+      ? `<span class="method-badge" data-method="${info.metodo}">${escapeHtml(info.texto)}</span>`
+      : `<span class="event-tag">${escapeHtml(info.texto)}</span>`;
+    item.innerHTML = `<div class="meta"><span class="event-label">${badge}${actor}${detail}</span><span>${escapeHtml(fmtHora(evt.timestamp_utc))}</span></div><div>${summarizeEvent(evt)}</div>`;
     wsLog.prepend(item);
     while (wsLog.children.length > 30) wsLog.removeChild(wsLog.lastChild);
   }
 
   function summarizeEvent(evt) {
-    if (evt.type === 'pong') return 'Pong recibido.';
-    if (evt.error) return `Error de métricas: ${escapeHtml(evt.error)}`;
+    if (evt.error) return MENSAJE_ERROR_EN_VIVO;
     if (evt.metricas) {
       const m = evt.metricas;
-      return `N=${m.total_interacciones} · S̄=${fmtNum(m.sentimiento_promedio)} · R̄=${fmtNum(m.reacciones_promedio)} · L̄=${fmtNum(m.longitud_media_texto)}`;
+      return `Total: ${fmtNum(m.total_interacciones)} interacciones · Sentimiento: ${fmtNum(m.sentimiento_promedio)}`;
     }
-    return 'Evento recibido.';
+    if ((evt.evento || evt.type) === 'conexion') return 'Esperando los datos más recientes…';
+    return 'Actualización recibida.';
   }
 
   function fmtNum(v) {
@@ -225,7 +263,7 @@
     setText('kpiSentimiento', fmtNum(metricas.sentimiento_promedio));
     setText('kpiReacciones', fmtNum(metricas.reacciones_promedio));
     setText('kpiLongitud', fmtNum(metricas.longitud_media_texto));
-    setText('ultimaActualizacion', `Última actualización: ${metricas.ultima_actualizacion || '—'}`);
+    setText('ultimaActualizacion', `Última actualización: ${fmtFechaHora(metricas.ultima_actualizacion)}`);
   }
 
   function ensureChart(id, config) {
@@ -272,9 +310,10 @@
   function updateRealtimeCharts(metricas) {
     const canalLabels = Object.keys(metricas.por_canal || {});
     const canalValues = canalLabels.map(k => metricas.por_canal[k]);
+    const canalNombres = canalLabels.map(etiqueta);
     ensureChart('chartCanal', {
       type: 'bar',
-      data: { labels: canalLabels, datasets: [{ label: 'Interacciones', data: canalValues, backgroundColor: palette[0], borderColor: palette[4], borderWidth: 1, borderRadius: 6 }] },
+      data: { labels: canalNombres, datasets: [{ label: 'Interacciones', data: canalValues, backgroundColor: palette[0], borderColor: palette[4], borderWidth: 1, borderRadius: 6 }] },
       options: {
         responsive: true,
         maintainAspectRatio: false,
@@ -291,7 +330,7 @@
     ensureChart('chartTema', {
       type: 'doughnut',
       data: {
-        labels: temaLabels,
+        labels: temaLabels.map(etiqueta),
         datasets: [{
           data: temaValues,
           backgroundColor: temaLabels.map((_, i) => palette[i % palette.length]),
@@ -347,10 +386,10 @@
       return `<tr>
         <td>${escapeHtml(i.id_interaccion || '')}</td>
         <td>${escapeHtml(i.id_usuario || '')}</td>
-        <td>${escapeHtml(i.timestamp || '')}</td>
-        <td><span class="pill">${escapeHtml(i.canal || '')}</span></td>
-        <td>${escapeHtml(i.tipo || '')}</td>
-        <td>${escapeHtml(i.tema || '')}</td>
+        <td>${escapeHtml(fmtFechaHora(i.timestamp))}</td>
+        <td><span class="pill">${escapeHtml(etiqueta(i.canal))}</span></td>
+        <td>${escapeHtml(etiqueta(i.tipo))}</td>
+        <td>${escapeHtml(etiqueta(i.tema))}</td>
         <td>${fmtNum(i.sentimiento)}</td>
         <td>${fmtNum(i.reacciones_recibidas)}</td>
         <td>${texto}</td>
@@ -390,12 +429,12 @@
     if (manualLogout) return;
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const wsUrl = `${proto}://${window.location.host}/ws?token=${encodeURIComponent(token)}`;
-    setWsStatus(false, 'WS: conectando...');
+    setWsStatus(false, 'Conectando…');
     try { ws = new WebSocket(wsUrl); } catch { scheduleReconnect(); return; }
 
     ws.onopen = () => {
       wsIntentos = 0;
-      setWsStatus(true, 'WS: en vivo');
+      setWsStatus(true, 'En vivo');
       logWsEvent({ type: 'conexion', evento: 'conexion', timestamp_utc: new Date().toISOString(), metricas: null });
       if (wsPingTimer) clearInterval(wsPingTimer);
       wsPingTimer = setInterval(() => {
@@ -413,7 +452,7 @@
       }
       if (msg.type === 'pong') return;
       if (msg.error) {
-        console.error(msg.error);
+        console.warn(msg.error);
         logWsEvent({ type: 'error_metricas', evento: 'error_metricas', timestamp_utc: new Date().toISOString(), error: msg.error });
       }
       if (msg.metricas) applyMetricas(msg.metricas);
@@ -423,7 +462,7 @@
     };
 
     ws.onclose = (ev) => {
-      setWsStatus(false, 'WS: desconectado');
+      setWsStatus(false, 'Sin conexión');
       console.warn(`WebSocket cerrado (código ${ev.code})${ev.reason ? `: ${ev.reason}` : ''}`);
       if (wsPingTimer) { clearInterval(wsPingTimer); wsPingTimer = null; }
       if (manualLogout) return;
@@ -432,7 +471,7 @@
     };
 
     ws.onerror = () => {
-      setWsStatus(false, 'WS: error');
+      setWsStatus(false, 'Sin conexión');
       console.error('Error de conexión WebSocket', wsUrl);
     };
   }
@@ -442,7 +481,7 @@
     if (wsReconnectTimer || manualLogout) return;
     const espera = Math.min(30000, 3000 * 2 ** Math.min(wsIntentos, 4));  // 3 s, 6 s, 12 s, 24 s, 30 s
     wsIntentos += 1;
-    setWsStatus(false, `WS: reconectando en ${Math.round(espera / 1000)} s`);
+    setWsStatus(false, `Reconectando en ${Math.round(espera / 1000)} s`);
     wsReconnectTimer = setTimeout(() => { wsReconnectTimer = null; connectWs(); }, espera);
   }
 
@@ -466,14 +505,12 @@
     setText('hConConsent', fmtNum(r.con_consentimiento_geo));
     setText('hSinConsent', fmtNum(r.sin_consentimiento_geo));
     setText('hCuarentena', fmtNum(data.interacciones_cuarentena));
-    if (data.privacidad?.filtro_top_ciudades) {
-      setText('bannerPrivacidad', `Verificación de privacidad: ${data.privacidad.filtro_top_ciudades} (regla ${data.privacidad.regla || 'sin_datos_geo'}).`);
-    }
+    setText('bannerPrivacidad', 'Privacidad: las ciudades solo incluyen a los miembros que autorizaron compartir su ubicación.');
 
     const plat = data.por_plataforma_principal || [];
     ensureChart('chartPlataforma', {
       type: 'bar',
-      data: { labels: plat.map(x => x.plataforma_principal || 'N/D'), datasets: [{ label: 'Usuarios', data: plat.map(x => x.total), backgroundColor: palette[3], borderColor: palette[7], borderWidth: 1, borderRadius: 6 }] },
+      data: { labels: plat.map(x => (x.plataforma_principal ? etiqueta(x.plataforma_principal) : 'Sin dato')), datasets: [{ label: 'Miembros', data: plat.map(x => x.total), backgroundColor: palette[3], borderColor: palette[7], borderWidth: 1, borderRadius: 6 }] },
       options: {
         indexAxis: 'y',
         responsive: true,
@@ -512,13 +549,13 @@
     });
 
     const ciudades = [...(data.top_ciudades_autorizadas || [])].sort((a, b) => Number(b.total || 0) - Number(a.total || 0));
-    const ciudadesNombres = ciudades.map(c => `${c.ciudad || 'N/D'}${c.estado ? ', ' + c.estado : ''}`);
+    const ciudadesNombres = ciudades.map(c => `${c.ciudad || 'Sin dato'}${c.estado ? ', ' + c.estado : ''}`);
     const MAX_ETIQUETA = 28;
     ensureChart('chartCiudades', {
       type: 'bar',
       data: {
         labels: ciudadesNombres.map(n => (n.length > MAX_ETIQUETA ? `${n.slice(0, MAX_ETIQUETA - 1)}…` : n)),
-        datasets: [{ label: 'Usuarios', data: ciudades.map(c => c.total), backgroundColor: palette[0], borderColor: palette[4], borderWidth: 1, borderRadius: 4, maxBarThickness: 22 }]
+        datasets: [{ label: 'Miembros', data: ciudades.map(c => c.total), backgroundColor: palette[0], borderColor: palette[4], borderWidth: 1, borderRadius: 4, maxBarThickness: 22 }]
       },
       options: {
         indexAxis: 'y',
