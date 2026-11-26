@@ -1,5 +1,7 @@
 # ── Secretos y credenciales ──────────────────────────────────────
 .env
+.env.*
+!.env.example
 firebase_credentials.json
 certs/
 *.pem

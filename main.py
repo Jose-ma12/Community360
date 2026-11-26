@@ -247,7 +247,7 @@ HASH_RELLENO = bcrypt.hashpw(b"community360-relleno", bcrypt.gensalt())
 class LoginRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    username: str = Field(..., min_length=1, max_length=64)
+    username: str = Field(..., min_length=1, max_length=254)  # acepta el username o el correo
     password: str = Field(..., min_length=1, max_length=128)
 
 
@@ -478,11 +478,18 @@ def get_firestore():
     global FIRESTORE_DB
     if FIRESTORE_DB is not None:
         return FIRESTORE_DB
-    cred_path = os.path.join(BASE_DIR, _env("FIREBASE_CREDENTIALS_PATH"))
-    if not os.path.isfile(cred_path):
-        raise RuntimeError(f"No se encontró credencial Firebase: {cred_path}")
+    # En hosting (Render/Railway) la credencial puede venir completa en FIREBASE_CREDENTIALS_JSON;
+    # en local se usa el archivo de FIREBASE_CREDENTIALS_PATH.
+    cred_json = os.getenv("FIREBASE_CREDENTIALS_JSON")
+    if cred_json:
+        certificado = credentials.Certificate(json.loads(cred_json))
+    else:
+        cred_path = os.path.join(BASE_DIR, _env("FIREBASE_CREDENTIALS_PATH"))
+        if not os.path.isfile(cred_path):
+            raise RuntimeError(f"No se encontró credencial Firebase: {cred_path}")
+        certificado = credentials.Certificate(cred_path)
     if not firebase_admin._apps:
-        firebase_admin.initialize_app(credentials.Certificate(cred_path))
+        firebase_admin.initialize_app(certificado)
     FIRESTORE_DB = firestore.client()
     return FIRESTORE_DB
 
@@ -727,9 +734,12 @@ async def dashboard_ruta_antigua():
 def login(req: LoginRequest, request: Request, response: Response):
     clave = _clave_intento(request, req.username)
     _verificar_bloqueo_login(clave)
+    # Se puede entrar con el username o con el correo (el correo se guarda en minúsculas).
+    identificador = req.username.strip()
     res = ejecutar_d1(
-        f"SELECT {', '.join(COLUMNAS_LOGIN_USUARIO)} FROM usuarios_sistema WHERE username = ? LIMIT 1",
-        [req.username.strip()],
+        f"SELECT {', '.join(COLUMNAS_LOGIN_USUARIO)} FROM usuarios_sistema "
+        "WHERE username = ? OR (correo IS NOT NULL AND correo = ?) LIMIT 1",
+        [identificador, identificador.lower()],
     )
     rows = res.get("results", [])
     user = rows[0] if rows else None
@@ -1108,3 +1118,17 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    # Render/Railway asignan el puerto en PORT. proxy_headers hace que uvicorn confíe en
+    # X-Forwarded-For/Proto del proxy HTTPS (IP real para el límite de intentos y wss:// correcto).
+    uvicorn.run(
+        app,
+        host=os.getenv("HOST", "0.0.0.0"),
+        port=int(os.getenv("PORT", 8000)),
+        proxy_headers=True,
+        forwarded_allow_ips=os.getenv("FORWARDED_ALLOW_IPS", "*"),
+    )

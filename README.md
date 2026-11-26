@@ -34,16 +34,24 @@ Después de copiar la plantilla, completa `.env` con tus valores reales. Tanto `
 python setup_auth_d1.py
 ```
 
-Crea la tabla `usuarios_sistema` y registra/actualiza el usuario administrador configurado en el script.
+Crea la tabla `usuarios_sistema` y registra/actualiza el usuario administrador configurado en el script. La tabla tiene una columna opcional `correo` (única, en minúsculas); si la tabla viene de una versión anterior sin esa columna, el script la agrega con `ALTER TABLE` sin borrar usuarios. Para otros usuarios (p. ej. el docente) se llama a `registrar_o_actualizar_admin(username=..., correo=..., rol="docente", ...)` pasando la contraseña desde una variable de entorno, nunca escrita en el repositorio.
 
 ## Ejecución del backend
 
 ```bash
 uvicorn main:app --reload
+# o bien, igual que en el hosting (lee el puerto de PORT, 8000 por defecto):
+python main.py
 ```
 
 - Login: `http://127.0.0.1:8000/static/login.html`
 - Dashboard: `http://127.0.0.1:8000/dashboard`. La página (`templates/dashboard.html`) solo se entrega con una sesión válida: al iniciar sesión el servidor deja la cookie HttpOnly `c360_session`, que únicamente sirve para esta ruta; sin ella (o si el token expiró o fue revocado) redirige al login. La API y el WebSocket siguen usando el token Bearer. La antigua `/static/dashboard.html` redirige a `/dashboard`. En producción con HTTPS define `COOKIE_SECURE=true`.
+
+## Despliegue (Render)
+
+- Build: `pip install -r requirements.txt` · Start: `python main.py` (escucha en `0.0.0.0:$PORT` y acepta las cabeceras `X-Forwarded-*` del proxy HTTPS, así el frontend abre `wss://` automáticamente).
+- Variables: las de `.env.example`, con `COOKIE_SECURE=true`, `CORS_ORIGINS=https://<tu-app>.onrender.com` y `FIREBASE_CREDENTIALS_JSON` con el contenido del JSON de Firebase (o un Secret File y su ruta en `FIREBASE_CREDENTIALS_PATH`).
+- Health check: `/api/health`.
 
 ## Endpoints principales
 
@@ -51,7 +59,7 @@ uvicorn main:app --reload
 - `GET /api/health`: sin autenticación; comprueba la conexión con D1 y Firestore. Responde 200 si ambos están disponibles y 503 si alguno falla, indicando cuál.
 
 ### Autenticación
-- `POST /api/auth/login`: valida credenciales en D1 y devuelve JWT.
+- `POST /api/auth/login`: valida credenciales en D1 y devuelve JWT. El campo `username` acepta el nombre de usuario o el correo registrado.
 - `GET /api/auth/verify`: valida sesión activa.
 - `POST /api/auth/logout`: revoca el token activo. La revocación se guarda en la tabla `tokens_revocados` de D1 (identificada por el `jti` del token), así que el token sigue invalidado aunque se reinicie el servidor. Las revocaciones de tokens ya expirados se depuran automáticamente.
 

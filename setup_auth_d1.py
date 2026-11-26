@@ -21,9 +21,13 @@ CREATE TABLE IF NOT EXISTS usuarios_sistema (
     password_hash TEXT NOT NULL,
     rol TEXT NOT NULL DEFAULT 'administrador',
     activo INTEGER NOT NULL DEFAULT 1,
-    creado_utc TEXT NOT NULL
+    creado_utc TEXT NOT NULL,
+    correo TEXT
 )
 """
+
+# El correo es opcional, pero no se puede repetir: así el login por correo identifica a un solo usuario.
+INDICE_CORREO = "CREATE UNIQUE INDEX IF NOT EXISTS idx_usuarios_sistema_correo ON usuarios_sistema (correo)"
 
 COLUMNAS_ESPERADAS = (
     ("id_admin", "INTEGER", 0, 1),
@@ -33,6 +37,7 @@ COLUMNAS_ESPERADAS = (
     ("rol", "TEXT", 1, 0),
     ("activo", "INTEGER", 1, 0),
     ("creado_utc", "TEXT", 1, 0),
+    ("correo", "TEXT", 0, 0),
 )
 
 # Las credenciales del administrador se leen del archivo .env (nunca se escriben en el código).
@@ -93,16 +98,24 @@ def columnas_actuales_usuarios_sistema():
 
 def verificar_o_recrear_tabla_usuarios_sistema():
     columnas = columnas_actuales_usuarios_sistema()
+    if columnas == COLUMNAS_ESPERADAS[:-1]:
+        # Tabla de la versión anterior (sin correo): se agrega la columna sin borrar a los usuarios.
+        ejecutar_d1("ALTER TABLE usuarios_sistema ADD COLUMN correo TEXT;")
+        print("[OK] Columna correo agregada a usuarios_sistema")
+        columnas = columnas_actuales_usuarios_sistema()
     if columnas == COLUMNAS_ESPERADAS:
+        ejecutar_d1(INDICE_CORREO)
         return False
     print("[INFO] Esquema de usuarios_sistema distinto del esperado; se recrea la tabla")
     ejecutar_d1("DROP TABLE IF EXISTS usuarios_sistema;")
     crear_tabla_usuarios_sistema()
+    ejecutar_d1(INDICE_CORREO)
     return True
 
 
-def registrar_o_actualizar_admin(username=None, nombre_completo=None, password=None, rol="administrador", activo=1):
+def registrar_o_actualizar_admin(username=None, nombre_completo=None, password=None, rol="administrador", activo=1, correo=None):
     username = (username or DEFAULT_ADMIN["username"]).strip()
+    correo = (correo or "").strip().lower() or None
     nombre_completo = (nombre_completo or DEFAULT_ADMIN["nombre_completo"]).strip()
     password = password or DEFAULT_ADMIN["password"]
     if not username or not password:
@@ -122,19 +135,19 @@ def registrar_o_actualizar_admin(username=None, nombre_completo=None, password=N
         ejecutar_d1(
             """
             UPDATE usuarios_sistema
-            SET nombre_completo = ?, password_hash = ?, rol = ?, activo = ?
+            SET nombre_completo = ?, password_hash = ?, rol = ?, activo = ?, correo = COALESCE(?, correo)
             WHERE username = ?
             """,
-            [nombre_completo, password_hash, rol, int(activo), username],
+            [nombre_completo, password_hash, rol, int(activo), correo, username],
         )
         print(f"[OK] Usuario actualizado: {username}")
     else:
         ejecutar_d1(
             """
-            INSERT INTO usuarios_sistema (username, nombre_completo, password_hash, rol, activo, creado_utc)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO usuarios_sistema (username, nombre_completo, password_hash, rol, activo, creado_utc, correo)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            [username, nombre_completo, password_hash, rol, int(activo), creado_utc],
+            [username, nombre_completo, password_hash, rol, int(activo), creado_utc, correo],
         )
         print(f"[OK] Usuario creado: {username}")
 
@@ -149,14 +162,14 @@ def main():
         print("[OK] Tabla usuarios_sistema verificada en D1")
     registrar_o_actualizar_admin()
     verificacion = ejecutar_d1(
-        "SELECT id_admin, username, nombre_completo, rol, activo, creado_utc FROM usuarios_sistema WHERE username = ?",
+        "SELECT id_admin, username, correo, nombre_completo, rol, activo, creado_utc FROM usuarios_sistema WHERE username = ?",
         [DEFAULT_ADMIN["username"]],
     )
     rows = verificacion.get("results", [])
     if not rows:
         raise RuntimeError("No se pudo verificar el usuario administrador")
     row = rows[0]
-    print("[VERIFICACION]", {k: row.get(k) for k in ["id_admin", "username", "nombre_completo", "rol", "activo", "creado_utc"]})
+    print("[VERIFICACION]", {k: row.get(k) for k in ["id_admin", "username", "correo", "nombre_completo", "rol", "activo", "creado_utc"]})
 
 
 if __name__ == "__main__":
