@@ -19,7 +19,7 @@
   const wsStatus = $('wsStatus');
   const wsLog = $('wsLog');
   const logoutBtn = $('logoutBtn');
-  setText('userInfo', user.nombre_completo ? `${user.nombre_completo} (${user.username || ''})` : 'Monitoreo en tiempo real e históricos');
+  setText('userInfo', user.nombre_completo || 'Panel de la comunidad');
 
   const charts = {};
   let ws = null;
@@ -428,13 +428,14 @@
   function connectWs() {
     if (manualLogout) return;
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const wsUrl = `${proto}://${window.location.host}/ws?token=${encodeURIComponent(token)}`;
+    const wsUrl = `${proto}://${window.location.host}/ws`;
     setWsStatus(false, 'Conectando…');
     try { ws = new WebSocket(wsUrl); } catch { scheduleReconnect(); return; }
 
     ws.onopen = () => {
       wsIntentos = 0;
-      setWsStatus(true, 'En vivo');
+      // El token va en el primer mensaje, no en la URL (así no aparece en los registros del servidor).
+      ws.send(JSON.stringify({ type: 'auth', token }));
       logWsEvent({ type: 'conexion', evento: 'conexion', timestamp_utc: new Date().toISOString(), metricas: null });
       if (wsPingTimer) clearInterval(wsPingTimer);
       wsPingTimer = setInterval(() => {
@@ -451,6 +452,7 @@
         return;
       }
       if (msg.type === 'pong') return;
+      if (msg.type === 'conexion_inicial') setWsStatus(true, 'En vivo');
       if (msg.error) {
         console.warn(msg.error);
         logWsEvent({ type: 'error_metricas', evento: 'error_metricas', timestamp_utc: new Date().toISOString(), error: msg.error });

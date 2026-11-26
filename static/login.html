@@ -145,7 +145,7 @@
           });
           const data = await resp.json().catch(() => ({}));
           if (!resp.ok) {
-            throw new Error(data.detail || 'No se pudo iniciar sesión.');
+            throw new Error(resp.status === 429 ? 'Demasiados intentos. Espera unos minutos e inténtalo de nuevo.' : (typeof data.detail === 'string' ? data.detail : 'Usuario o contraseña incorrectos.'));
           }
           sessionStorage.setItem('c360_token', data.access_token);
           sessionStorage.setItem('c360_user', JSON.stringify(data.usuario || {}));

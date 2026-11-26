@@ -69,6 +69,25 @@ COOKIE_SESION = "c360_session"
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"  # true cuando se sirva por HTTPS
 RUTA_DASHBOARD_HTML = os.path.join(BASE_DIR, "templates", "dashboard.html")
 
+WS_AUTH_TIMEOUT_S = 5
+
+# Cabeceras de seguridad para todas las respuestas HTTP.
+CABECERAS_SEGURIDAD = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+    "Content-Security-Policy": (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data:; "
+        "connect-src 'self' ws: wss:; "
+        "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    ),
+}
+
 security = HTTPBearer(auto_error=False)
 TOKENS_REVOCADOS: set[str] = set()  # caché en memoria; la fuente de verdad es la tabla tokens_revocados de D1
 FIRESTORE_DB = None
@@ -76,6 +95,8 @@ FIRESTORE_DB = None
 
 @asynccontextmanager
 async def lifespan(_app):
+    if len(os.getenv("JWT_SECRET_KEY", "")) < 32:
+        print("[AVISO] JWT_SECRET_KEY tiene menos de 32 caracteres: genera uno con secrets.token_urlsafe(48)")
     try:
         await run_in_threadpool(ejecutar_d1, ESQUEMA_TOKENS_REVOCADOS)
     except Exception as exc:  # el servidor arranca aunque D1 no responda; se reintenta al cerrar sesión
@@ -101,6 +122,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def cabeceras_de_seguridad(request, call_next):
+    respuesta = await call_next(request)
+    for nombre, valor in CABECERAS_SEGURIDAD.items():
+        respuesta.headers.setdefault(nombre, valor)
+    return respuesta
 
 
 @app.exception_handler(google_exceptions.GoogleAPIError)
@@ -949,11 +978,18 @@ def historico_cuarentena(
 
 
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket, token: str | None = Query(default=None)):
+async def websocket_endpoint(websocket: WebSocket):
     # Se acepta primero para que el navegador reciba el código de cierre real
     # (si se cierra antes de aceptar, el navegador solo ve 1006 y no sabe por qué).
     await websocket.accept()
-    if not token:
+    # El token llega en el PRIMER mensaje ({"type":"auth","token":"..."}) y no en la URL:
+    # así no queda escrito en los registros de uvicorn ni en el historial del navegador.
+    try:
+        primero = json.loads(await asyncio.wait_for(websocket.receive_text(), timeout=WS_AUTH_TIMEOUT_S))
+        token = primero.get("token") if isinstance(primero, dict) and primero.get("type") == "auth" else None
+    except Exception:
+        token = None
+    if not token or not isinstance(token, str):
         await websocket.close(code=1008)
         return
     try:
@@ -972,8 +1008,9 @@ async def websocket_endpoint(websocket: WebSocket, token: str | None = Query(def
         try:
             metricas = await run_in_threadpool(recalcular_metricas_dinamicas, False)
         except Exception as exc:
-            error_metricas = f"No se pudieron calcular las métricas iniciales: {exc}"
-            print(error_metricas)
+            # El detalle técnico se queda en la consola; al navegador solo le llega un aviso genérico.
+            print(f"[WS] No se pudieron calcular las métricas iniciales: {exc}")
+            error_metricas = "No se pudieron cargar los datos en vivo"
             metricas = metricas_vacias()
         await websocket.send_text(json.dumps(sanitizar_json({
             "type": "conexion_inicial",
