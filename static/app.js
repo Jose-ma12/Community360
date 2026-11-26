@@ -205,7 +205,7 @@
   }
   function fmtFechaHora(v) {
     const d = aFecha(v);
-    return d ? d.toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+    return d ? d.toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short', hourCycle: 'h23' }) : '—';
   }
   function fmtHora(v) {
     const d = aFecha(v) || new Date();
