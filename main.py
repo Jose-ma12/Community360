@@ -797,7 +797,13 @@ async def dashboard(request: Request):
         except HTTPException:
             pass
     redireccion = RedirectResponse(url="/static/login.html?sesion=expirada", status_code=status.HTTP_303_SEE_OTHER)
-    redireccion.delete_cookie(COOKIE_SESION, path="/")
+    redireccion.delete_cookie(
+        COOKIE_SESION,
+        path="/",
+        httponly=True,
+        samesite="strict",
+        secure=COOKIE_SECURE,
+    )
     return redireccion
 
 
@@ -877,7 +883,13 @@ def _revocar_en_d1(payload: dict) -> bool:
 @app.post("/api/auth/logout")
 def logout(request: Request, response: Response, credentials: HTTPAuthorizationCredentials | None = Depends(security)):
     # Cerrar sesión solo necesita un token bien firmado: no depende de que el usuario siga activo.
-    response.delete_cookie(COOKIE_SESION, path="/")
+    response.delete_cookie(
+        COOKIE_SESION,
+        path="/",
+        httponly=True,
+        samesite="strict",
+        secure=COOKIE_SECURE,
+    )
     token = credentials.credentials if credentials and credentials.credentials else request.cookies.get(COOKIE_SESION)
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Falta token Bearer")
