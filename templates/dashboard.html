@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Community360 | Panel</title>
+  <link rel="icon" href="data:,">
   <script src="/static/tema.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -116,18 +117,102 @@
       <section class="screen screen--interacciones" id="tabla-recientes" aria-labelledby="titulo-interacciones" hidden>
         <h2 class="sr-only" id="titulo-interacciones">Interacciones</h2>
         <article class="card table-card">
-          <h3>Últimas 10 interacciones</h3>
-          <div class="table-wrap">
-            <table class="data">
+          <div class="card-head">
+            <h3>Interacciones</h3>
+            <button id="btnExportarCsv" class="btn" type="button" disabled title="Descarga las filas que se ven en la tabla">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5"></path><path d="M5 19h14"></path></svg>
+              <span>Exportar CSV</span>
+            </button>
+          </div>
+
+          <!-- Filtros de solo lectura: no hay formulario ni envío de datos, solo consultas GET. -->
+          <div class="filters-bar" role="search" aria-label="Filtrar interacciones">
+            <label class="field field--search">
+              <span class="field-label">Buscar</span>
+              <input id="fBuscar" type="search" placeholder="Folio (I…), usuario (U…) o texto" autocomplete="off" spellcheck="false">
+            </label>
+            <label class="field">
+              <span class="field-label">Canal</span>
+              <select id="fCanal">
+                <option value="">Todos</option>
+                <option value="Telegram">Telegram</option>
+                <option value="Facebook">Facebook</option>
+                <option value="Instagram">Instagram</option>
+                <option value="TikTok">TikTok</option>
+                <option value="Twitter/X">Twitter/X</option>
+                <option value="Discord">Discord</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field-label">Tema</span>
+              <select id="fTema">
+                <option value="">Todos</option>
+                <option value="arte_comisiones">Arte y comisiones</option>
+                <option value="reglas_moderacion">Reglas y moderación</option>
+                <option value="eventos_convenciones">Eventos y convenciones</option>
+                <option value="videojuegos">Videojuegos</option>
+                <option value="memes_humor">Memes y humor</option>
+                <option value="fursuits">Fursuits</option>
+                <option value="seguridad_privacidad">Seguridad y privacidad</option>
+                <option value="musica">Música</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field-label">Tipo</span>
+              <select id="fTipo">
+                <option value="">Todos</option>
+                <option value="mensaje">Mensaje</option>
+                <option value="comentario">Comentario</option>
+                <option value="reaccion">Reacción</option>
+                <option value="respuesta_encuesta">Respuesta a encuesta</option>
+                <option value="rsvp_evento">Confirmación a evento</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field-label">Sentimiento</span>
+              <select id="fSentimiento">
+                <option value="">Todos</option>
+                <option value="positive">Positivo</option>
+                <option value="neutral">Neutral</option>
+                <option value="negative">Negativo</option>
+              </select>
+            </label>
+            <label class="field field--narrow">
+              <span class="field-label">Filas</span>
+              <select id="fFilas">
+                <option value="10">10</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+              </select>
+            </label>
+            <button id="btnLimpiarFiltros" class="btn btn--ghost" type="button">Limpiar</button>
+          </div>
+
+          <div class="live-notice" id="avisoNuevas" role="status" hidden>
+            <span>Hay actividad nueva desde que aplicaste los filtros.</span>
+            <button id="btnRefrescar" class="btn btn--link" type="button">Actualizar</button>
+          </div>
+
+          <div class="table-wrap" id="wrapInteracciones" aria-busy="false">
+            <table class="data data--interacciones">
+              <caption class="sr-only">Interacciones de la comunidad. Selecciona una fila para ver su detalle.</caption>
               <thead>
                 <tr>
-                  <th>Folio</th><th>Usuario</th><th>Fecha y hora</th><th>Canal</th><th>Tipo</th><th>Tema</th><th>Sentimiento</th><th>Reacciones</th><th>Texto</th>
+                  <th scope="col">Folio</th><th scope="col">Usuario</th><th scope="col">Fecha y hora</th><th scope="col">Canal</th><th scope="col">Tipo</th><th scope="col">Tema</th><th scope="col">Sentimiento</th><th scope="col">Reacciones</th><th scope="col">Texto</th>
                 </tr>
               </thead>
               <tbody id="tablaInteracciones">
                 <tr><td colspan="9" class="empty">Cargando…</td></tr>
               </tbody>
             </table>
+          </div>
+
+          <div class="pager">
+            <span class="pager-info" id="pagInterInfo" aria-live="polite">Mostrando 0–0 de 0</span>
+            <div class="pager-btns">
+              <button id="pagInterAnterior" class="btn btn--ghost" type="button" disabled>Anterior</button>
+              <button id="pagInterSiguiente" class="btn btn--ghost" type="button" disabled>Siguiente</button>
+            </div>
           </div>
         </article>
       </section>
@@ -172,10 +257,125 @@
             <h3>Top ciudades autorizadas</h3>
             <div class="chart-wrap"><canvas id="chartCiudades"></canvas></div>
           </article>
+
+          <article class="card card--explorador">
+            <div class="card-head">
+              <h3 id="tituloExplorador">Explorador de datos históricos</h3>
+              <div class="segmented" role="tablist" aria-labelledby="tituloExplorador">
+                <button class="segmented-btn" id="tabPadron" type="button" role="tab" aria-selected="true" aria-controls="panelPadron">Padrón de miembros</button>
+                <button class="segmented-btn" id="tabCuarentena" type="button" role="tab" aria-selected="false" aria-controls="panelCuarentena" tabindex="-1">Cuarentena</button>
+              </div>
+            </div>
+
+            <div class="tab-panel" id="panelPadron" role="tabpanel" aria-labelledby="tabPadron">
+              <div class="filters-bar" role="search" aria-label="Filtrar padrón de miembros">
+                <label class="field field--search">
+                  <span class="field-label">Buscar</span>
+                  <input id="pBuscar" type="search" placeholder="ID (U…) o alias" autocomplete="off" spellcheck="false">
+                </label>
+                <label class="field">
+                  <span class="field-label">Plataforma</span>
+                  <select id="pPlataforma">
+                    <option value="">Todas</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="field-label">Artista</span>
+                  <select id="pArtista">
+                    <option value="">Todos</option>
+                    <option value="1">Sí</option>
+                    <option value="0">No</option>
+                  </select>
+                </label>
+                <label class="field field--narrow">
+                  <span class="field-label">Filas</span>
+                  <select id="pFilas">
+                    <option value="10">10</option>
+                    <option value="25" selected>25</option>
+                    <option value="50">50</option>
+                  </select>
+                </label>
+                <button id="pLimpiar" class="btn btn--ghost" type="button">Limpiar</button>
+              </div>
+              <div class="table-wrap table-wrap--explorador" id="wrapPadron" aria-busy="false">
+                <table class="data">
+                  <caption class="sr-only">Padrón de miembros consolidado en D1. La ubicación solo se muestra con consentimiento.</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">ID</th><th scope="col">Alias</th><th scope="col">Plataforma</th><th scope="col">Interés</th><th scope="col">Artista</th><th scope="col">Estatus</th><th scope="col">Mensajes 30 d</th><th scope="col">Última actividad</th><th scope="col">Ubicación</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tablaPadron">
+                    <tr><td colspan="9" class="empty">Cargando…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="pager">
+                <span class="pager-info" id="pagPadronInfo" aria-live="polite">Mostrando 0–0 de 0</span>
+                <div class="pager-btns">
+                  <button id="pagPadronAnterior" class="btn btn--ghost" type="button" disabled>Anterior</button>
+                  <button id="pagPadronSiguiente" class="btn btn--ghost" type="button" disabled>Siguiente</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="tab-panel" id="panelCuarentena" role="tabpanel" aria-labelledby="tabCuarentena" hidden>
+              <div class="filters-bar" role="search" aria-label="Filtrar registros en cuarentena">
+                <label class="field">
+                  <span class="field-label">Motivo de rechazo</span>
+                  <select id="cMotivo">
+                    <option value="">Todos</option>
+                  </select>
+                </label>
+                <label class="field field--narrow">
+                  <span class="field-label">Filas</span>
+                  <select id="cFilas">
+                    <option value="10">10</option>
+                    <option value="25" selected>25</option>
+                    <option value="50">50</option>
+                  </select>
+                </label>
+                <button id="cLimpiar" class="btn btn--ghost" type="button">Limpiar</button>
+                <div class="filters-summary" id="cuarResumen" aria-live="polite"></div>
+              </div>
+              <div class="table-wrap table-wrap--explorador" id="wrapCuarentena" aria-busy="false">
+                <table class="data">
+                  <caption class="sr-only">Interacciones rechazadas por el ETL y el motivo del rechazo.</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Folio</th><th scope="col">Usuario de origen</th><th scope="col">Fecha de origen</th><th scope="col">Canal</th><th scope="col">Tipo</th><th scope="col">Tema</th><th scope="col">Motivo de rechazo</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tablaCuarentena">
+                    <tr><td colspan="7" class="empty">Cargando…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="pager">
+                <span class="pager-info" id="pagCuarInfo" aria-live="polite">Mostrando 0–0 de 0</span>
+                <div class="pager-btns">
+                  <button id="pagCuarAnterior" class="btn btn--ghost" type="button" disabled>Anterior</button>
+                  <button id="pagCuarSiguiente" class="btn btn--ghost" type="button" disabled>Siguiente</button>
+                </div>
+              </div>
+            </div>
+          </article>
         </div>
       </section>
     </main>
   </div>
+
+  <dialog class="modal" id="detalleDialog" aria-labelledby="detalleTitulo">
+    <div class="modal-inner">
+      <div class="modal-head">
+        <h3 id="detalleTitulo">Detalle de la interacción</h3>
+        <button id="detalleCerrar" class="icon-btn" type="button" aria-label="Cerrar detalle" title="Cerrar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>
+        </button>
+      </div>
+      <div class="modal-body" id="detalleCuerpo"></div>
+    </div>
+  </dialog>
 
   <script src="/static/app.js"></script>
 </body>

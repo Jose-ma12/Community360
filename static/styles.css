@@ -494,16 +494,24 @@ table.data th {
 table.data tbody tr { transition: background-color .15s ease; }
 table.data tbody tr:hover { background: var(--tarjeta-2); }
 table.data tbody tr:last-child td { border-bottom: 0; }
-/* Columnas numéricas: folio, usuario, fecha, sentimiento y reacciones. */
-table.data tbody td:first-child,
-table.data tbody td:nth-child(2),
-table.data tbody td:nth-child(3),
-table.data tbody td:nth-child(7),
-table.data tbody td:nth-child(8) {
+/* Columnas numéricas de Interacciones: folio, usuario, fecha, sentimiento y reacciones.
+   Las tablas del explorador marcan sus columnas numéricas con td.mono. */
+.data--interacciones tbody td:first-child,
+.data--interacciones tbody td:nth-child(2),
+.data--interacciones tbody td:nth-child(3),
+.data--interacciones tbody td:nth-child(7),
+.data--interacciones tbody td:nth-child(8),
+table.data td.mono,
+.mono {
   font-family: var(--font-mono);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
+
+/* Filas que abren el detalle (tr.row-link, generadas por app.js). */
+table.data tbody tr.row-link { cursor: pointer; }
+table.data tbody tr.row-link:focus-visible { outline: 2px solid var(--acento); outline-offset: -2px; }
+.table-wrap[aria-busy="true"] { opacity: .55; transition: opacity .2s ease; }
 
 /* Canal (span.pill) y sentimiento (td.sentiment[data-sentiment]) los genera app.js. */
 .pill {
@@ -547,6 +555,271 @@ table.data tbody td:nth-child(8) {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ── Encabezado de tarjeta con acciones ─────────────────────────────────── */
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin-bottom: 14px;
+}
+.card-head h3 { margin: 0; }
+
+/* ── Botones ────────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--borde-2);
+  border-radius: 8px;
+  background: var(--tarjeta-2);
+  color: var(--texto);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: border-color .2s ease, color .2s ease, background-color .2s ease;
+}
+.btn svg { width: 16px; height: 16px; flex: 0 0 auto; }
+.btn:hover:not(:disabled) { border-color: var(--acento); color: var(--acento); }
+.btn:disabled { cursor: not-allowed; opacity: .45; }
+.btn--ghost { background: transparent; color: var(--texto-2); border-color: var(--borde); }
+.btn--link {
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--acento);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.btn--link:hover:not(:disabled) { color: var(--texto); }
+
+/* ── Barra de filtros (div.filters-bar[role="search"], sin <form>) ──────── */
+.filters-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 12px;
+  padding-bottom: 14px;
+}
+.field { display: flex; flex-direction: column; gap: 5px; flex: 0 1 170px; min-width: 120px; }
+.field--search { flex: 1 1 260px; min-width: 200px; }
+.field--narrow { flex: 0 0 84px; min-width: 84px; }
+.field-label {
+  color: var(--texto-3);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.field input,
+.field select {
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+  background-color: var(--tarjeta-2);
+  color: var(--texto);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color-scheme: dark;
+  transition: border-color .2s ease;
+}
+[data-theme="light"] .field input,
+[data-theme="light"] .field select { color-scheme: light; }
+.field input::placeholder { color: var(--texto-3); }
+.field input:hover,
+.field select:hover { border-color: var(--borde-2); }
+.field input:focus-visible,
+.field select:focus-visible { border-color: var(--acento); outline: none; box-shadow: 0 0 0 1px var(--acento); }
+/* Flecha del select dibujada con degradados: toma el color del tema sin imágenes externas. */
+.field select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 28px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--texto-3) 50%),
+    linear-gradient(135deg, var(--texto-3) 50%, transparent 50%);
+  background-position: calc(100% - 15px) 50%, calc(100% - 10px) 50%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+}
+.filters-summary {
+  flex: 1 1 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.summary-chip {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 5px 10px;
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+  background: var(--tarjeta-2);
+  color: var(--texto);
+  font-size: 12px;
+}
+
+/* Aviso de actividad nueva mientras hay filtros activos (#avisoNuevas). */
+.live-notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--borde);
+  border-left: 2px solid var(--acento);
+  border-radius: 0 8px 8px 0;
+  background: var(--tarjeta-2);
+  color: var(--texto-2);
+  font-size: 13px;
+}
+.live-notice[hidden] { display: none; }
+
+/* ── Paginación ─────────────────────────────────────────────────────────── */
+.table-card .table-wrap,
+.table-wrap--explorador { margin-bottom: 0; }
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 -20px -18px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--borde);
+}
+.pager-info {
+  color: var(--texto-3);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.pager-btns { display: flex; gap: 8px; }
+
+/* ── Explorador histórico ───────────────────────────────────────────────── */
+.card--explorador { grid-column: span 12; }
+.table-wrap--explorador { flex: 0 1 auto; max-height: 520px; }
+.tab-panel[hidden] { display: none; }
+
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--borde);
+  border-radius: 9px;
+  background: var(--tarjeta-2);
+}
+.segmented-btn {
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--texto-2);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: color .2s ease, background-color .2s ease;
+}
+.segmented-btn:hover { color: var(--texto); }
+.segmented-btn[aria-selected="true"] {
+  background: var(--tarjeta);
+  color: var(--texto);
+  box-shadow: inset 0 0 0 1px var(--borde-2);
+}
+
+.privacy-tag,
+.code-tag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.privacy-tag {
+  border: 1px dashed color-mix(in srgb, var(--ocre) 60%, transparent);
+  color: var(--ocre);
+}
+.code-tag {
+  border: 1px solid color-mix(in srgb, var(--peligro) 50%, transparent);
+  color: var(--peligro);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: .02em;
+}
+
+/* ── Detalle de interacción (<dialog id="detalleDialog">) ───────────────── */
+.modal {
+  width: min(680px, calc(100% - 32px));
+  max-height: calc(100vh - 32px);
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--borde-2);
+  border-radius: var(--radio);
+  background: var(--tarjeta);
+  color: var(--texto);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .35);
+}
+.modal[open] { display: flex; }
+/* ::backdrop no hereda variables en todos los navegadores: color fijo. */
+.modal::backdrop { background: rgba(7, 9, 13, .6); backdrop-filter: blur(2px); }
+.modal-inner { display: flex; flex-direction: column; width: 100%; min-height: 0; max-height: calc(100vh - 34px); }
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 14px 20px;
+  border-bottom: 1px solid var(--borde);
+}
+.modal-head h3 {
+  margin: 0;
+  color: var(--texto);
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+}
+.modal-body { padding: 18px 20px 20px; overflow-y: auto; }
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 20px;
+  margin: 0;
+}
+.detail-item { min-width: 0; }
+.detail-item--wide { grid-column: 1 / -1; }
+.detail-item dt {
+  margin-bottom: 4px;
+  color: var(--texto-3);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.detail-item dd { margin: 0; color: var(--texto); font-size: 14px; overflow-wrap: anywhere; }
+.detail-text {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+  background: var(--tarjeta-2);
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+.tag-list { display: flex; flex-wrap: wrap; gap: 6px; }
 
 /* ── Responsive ─────────────────────────────────────────────────────────── */
 @media (max-width: 1280px) {
@@ -599,8 +872,23 @@ table.data tbody td:nth-child(8) {
   .screen--tiempo-real .chart-wrap,
   .screen--historico .chart-wrap { height: 260px; }
   .card--ciudades .chart-wrap { height: 340px; }
-  .table-card { height: calc(100vh - var(--topbar-h) - 32px); min-height: 360px; }
+  .table-card { height: auto; }
+  .table-card .table-wrap { flex: 0 1 auto; max-height: 60vh; }
   .banner { white-space: normal; }
+
+  /* Filtros en dos columnas; el buscador ocupa la fila completa. */
+  .filters-bar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .field,
+  .field--narrow { min-width: 0; }
+  .field--search,
+  .filters-summary { grid-column: 1 / -1; min-width: 0; }
+  .card-head .btn { flex: 1 1 auto; }
+  .segmented { width: 100%; }
+  .segmented-btn { flex: 1 1 0; padding: 0 8px; }
+  .pager { justify-content: center; }
+  .pager-btns { flex: 1 1 100%; }
+  .pager-btns .btn { flex: 1 1 0; }
+  .detail-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (prefers-reduced-motion: reduce) {

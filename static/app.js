@@ -396,38 +396,19 @@
     container.innerHTML = html;
   }
 
-  function renderUltimas(interacciones) {
-    const tbody = $('tablaInteracciones');
-    if (!tbody) return;
-    if (!interacciones || !interacciones.length) {
-      tbody.innerHTML = '<tr><td colspan="9" class="empty">Sin interacciones disponibles.</td></tr>';
-      return;
-    }
-    tbody.innerHTML = interacciones.map(i => {
-      const texto = i.tipo === 'reaccion' ? '<span class="muted">— reacción —</span>' : escapeHtml((i.texto || '').slice(0, 80));
-      return `<tr>
-        <td>${escapeHtml(i.id_interaccion || '')}</td>
-        <td>${escapeHtml(i.id_usuario || '')}</td>
-        <td>${escapeHtml(fmtFechaHora(i.timestamp))}</td>
-        <td><span class="pill">${escapeHtml(etiqueta(i.canal))}</span></td>
-        <td>${escapeHtml(etiqueta(i.tipo))}</td>
-        <td>${escapeHtml(etiqueta(i.tema))}</td>
-        <td>${fmtNum(i.sentimiento)}</td>
-        <td>${fmtNum(i.reacciones_recibidas)}</td>
-        <td>${texto}</td>
-      </tr>`;
-    }).join('');
-    decorateSentiment();
-  }
-
   function decorateSentiment() {
     document.querySelectorAll('#tablaInteracciones td:nth-child(7)').forEach((cell) => {
-      const value = Number(String(cell.textContent).trim());
-      const tone = value > 0.05 ? 'positive' : value < -0.05 ? 'negative' : 'neutral';
-      cell.dataset.sentiment = tone;
+      cell.dataset.sentiment = tonoSentimiento(String(cell.textContent).trim());
       cell.classList.add('sentiment');
     });
   }
+
+  // Mismo umbral para colorear la tabla, filtrar por sentimiento y exportar.
+  function tonoSentimiento(v) {
+    const n = Number(v);
+    return n > 0.05 ? 'positive' : n < -0.05 ? 'negative' : 'neutral';
+  }
+  const TONOS = { positive: 'Positivo', neutral: 'Neutral', negative: 'Negativo' };
 
   function escapeHtml(str) {
     return String(str)
@@ -435,13 +416,14 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
-  function applyMetricas(metricas) {
+  // nuevo = la actualización viene de un alta, edición o borrado (no de la conexión inicial).
+  function applyMetricas(metricas, { nuevo = false } = {}) {
     if (!metricas) return;
     updateKpis(metricas);
     try {
       updateRealtimeCharts(metricas);
       renderHeatmap(metricas.heatmap_actividad || {});
-      renderUltimas(metricas.ultimas_interacciones || []);
+      actualizarTablaDesdeMetricas(metricas, nuevo);
     } catch (err) {
       console.error('Error al actualizar visualizaciones en tiempo real', err);
     }
@@ -479,7 +461,7 @@
         console.warn(msg.error);
         logWsEvent({ type: 'error_metricas', evento: 'error_metricas', timestamp_utc: new Date().toISOString(), error: msg.error });
       }
-      if (msg.metricas) applyMetricas(msg.metricas);
+      if (msg.metricas) applyMetricas(msg.metricas, { nuevo: EVENTOS_CAMBIO.has(msg.type || msg.evento) });
       if (['conexion_inicial', 'interaccion_creada', 'interaccion_actualizada', 'interaccion_eliminada', 'conexion'].includes(msg.type || msg.evento)) {
         logWsEvent(msg);
       }
@@ -532,6 +514,7 @@
     setText('bannerPrivacidad', 'Privacidad: las ciudades solo incluyen a los miembros que autorizaron compartir su ubicación.');
 
     const plat = data.por_plataforma_principal || [];
+    llenarSelect($('pPlataforma'), plat.filter(x => x.plataforma_principal).map(x => ({ valor: x.plataforma_principal, texto: etiqueta(x.plataforma_principal) })));
     ensureChart('chartPlataforma', {
       type: 'bar',
       data: { labels: plat.map(x => (x.plataforma_principal ? etiqueta(x.plataforma_principal) : 'Sin dato')), datasets: [{ label: 'Miembros', data: plat.map(x => x.total), backgroundColor: PALETA[1], borderColor: PALETA[1], borderWidth: 0, borderRadius: 4 }] },
@@ -597,11 +580,577 @@
     });
   }
 
+  // ── Utilidades de consulta y paginación ─────────────────────────────────
+  const EVENTOS_CAMBIO = new Set(['interaccion_creada', 'interaccion_actualizada', 'interaccion_eliminada']);
+  const MAX_LOTES = 40;  // tope de seguridad al recorrer una colección completa por lotes
+
+  function debounce(fn, ms) {
+    let t = null;
+    return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+  }
+
+  function fmtEntero(v) {
+    return Number(v || 0).toLocaleString('es-MX');
+  }
+
+  async function getJson(ruta) {
+    const resp = await apiFetch(ruta);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp.json();
+  }
+
+  // Trae todos los registros de un endpoint paginado (limit/offset). Se guarda la promesa en caché
+  // por combinación de filtros, así teclear en el buscador no repite consultas al servidor.
+  function traerTodas(ruta, params, clave, tamLote, cache) {
+    const llave = params.toString();
+    if (!cache.has(llave)) {
+      const promesa = (async () => {
+        const todas = [];
+        let total = Infinity;
+        for (let lote = 0; lote < MAX_LOTES && todas.length < total; lote += 1) {
+          const p = new URLSearchParams(params);
+          p.set('limit', tamLote);
+          p.set('offset', todas.length);
+          const data = await getJson(`${ruta}?${p}`);
+          const filas = data[clave] || [];
+          total = Number(data.total) || 0;
+          todas.push(...filas);
+          if (!filas.length) break;
+        }
+        return todas;
+      })();
+      cache.set(llave, promesa);
+      promesa.catch(() => cache.delete(llave));
+    }
+    return cache.get(llave);
+  }
+
+  function paginar(lista, pagina, limite) {
+    const paginas = Math.max(1, Math.ceil(lista.length / limite));
+    const p = Math.min(pagina, paginas - 1);
+    return { pagina: p, filas: lista.slice(p * limite, (p + 1) * limite) };
+  }
+
+  // prefijo: pagInter, pagPadron o pagCuar (ids ...Info, ...Anterior y ...Siguiente del HTML).
+  function renderPager(prefijo, estado, limite) {
+    const desde = estado.filas.length ? estado.pagina * limite + 1 : 0;
+    const hasta = desde ? desde + estado.filas.length - 1 : 0;
+    setText(`${prefijo}Info`, `Mostrando ${fmtEntero(desde)}–${fmtEntero(hasta)} de ${fmtEntero(estado.total)}`);
+    const anterior = $(`${prefijo}Anterior`);
+    const siguiente = $(`${prefijo}Siguiente`);
+    if (anterior) anterior.disabled = estado.pagina === 0;
+    if (siguiente) siguiente.disabled = hasta >= estado.total;
+  }
+
+  function setBusy(id, busy) {
+    const el = $(id);
+    if (el) el.setAttribute('aria-busy', String(busy));
+  }
+
+  function filaVacia(tbodyId, columnas, mensaje) {
+    const tbody = $(tbodyId);
+    if (tbody) tbody.innerHTML = `<tr><td colspan="${columnas}" class="empty">${escapeHtml(mensaje)}</td></tr>`;
+  }
+
+  // Conserva la primera opción ("Todas"/"Todos") y la selección actual si sigue existiendo.
+  function llenarSelect(select, opciones) {
+    if (!select) return;
+    const actual = select.value;
+    select.replaceChildren(select.options[0], ...opciones.map(o => new Option(o.texto, o.valor)));
+    if (opciones.some(o => o.valor === actual)) select.value = actual;
+  }
+
+  // ── Interacciones: filtros, paginación, detalle y CSV ───────────────────
+  // Canal, tema y tipo los filtra la API. El texto y el sentimiento se filtran aquí sobre la lista
+  // completa de /api/interacciones, que se pide una sola vez por combinación de filtros.
+  const filtrosInter = {
+    buscar: $('fBuscar'), canal: $('fCanal'), tema: $('fTema'), tipo: $('fTipo'),
+    sentimiento: $('fSentimiento'), filas: $('fFilas')
+  };
+  const inter = { pagina: 0, total: 0, filas: [], metricas: null, peticion: 0, cargada: false };
+  const cacheInteracciones = new Map();
+  const avisoNuevas = $('avisoNuevas');
+
+  function leerFiltrosInter() {
+    return {
+      q: (filtrosInter.buscar?.value || '').trim(),
+      canal: filtrosInter.canal?.value || '',
+      tema: filtrosInter.tema?.value || '',
+      tipo: filtrosInter.tipo?.value || '',
+      sentimiento: filtrosInter.sentimiento?.value || '',
+      limite: Number(filtrosInter.filas?.value) || 10
+    };
+  }
+  function hayFiltrosInter(f) {
+    return Boolean(f.q || f.canal || f.tema || f.tipo || f.sentimiento);
+  }
+  // Sin filtros y en la primera página la tabla se actualiza sola con cada evento del WebSocket.
+  function tablaEnVivo(f) {
+    return !hayFiltrosInter(f) && inter.pagina === 0;
+  }
+
+  function mostrarAvisoNuevas(visible) {
+    if (avisoNuevas) avisoNuevas.hidden = !visible;
+  }
+
+  function coincideInteraccion(i, f) {
+    if (f.sentimiento && tonoSentimiento(i.sentimiento) !== f.sentimiento) return false;
+    if (!f.q) return true;
+    const q = f.q.toLowerCase();
+    return [i.id_interaccion, i.id_usuario, i.texto].some(v => String(v || '').toLowerCase().includes(q));
+  }
+
+  function pintarInteracciones(filas, filtrado) {
+    inter.filas = filas || [];
+    const tbody = $('tablaInteracciones');
+    if (tbody) {
+      tbody.innerHTML = inter.filas.length
+        ? inter.filas.map((i, idx) => {
+          const texto = i.tipo === 'reaccion' ? '<span class="muted">— reacción —</span>' : escapeHtml((i.texto || '').slice(0, 80));
+          return `<tr class="row-link" data-idx="${idx}" tabindex="0" title="Ver detalle">
+            <td>${escapeHtml(i.id_interaccion || '')}</td>
+            <td>${escapeHtml(i.id_usuario || '')}</td>
+            <td>${escapeHtml(fmtFechaHora(i.timestamp))}</td>
+            <td><span class="pill">${escapeHtml(etiqueta(i.canal))}</span></td>
+            <td>${escapeHtml(etiqueta(i.tipo))}</td>
+            <td>${escapeHtml(etiqueta(i.tema))}</td>
+            <td>${fmtNum(i.sentimiento)}</td>
+            <td>${fmtNum(i.reacciones_recibidas)}</td>
+            <td>${texto}</td>
+          </tr>`;
+        }).join('')
+        : `<tr><td colspan="9" class="empty">${filtrado ? 'Ninguna interacción coincide con los filtros.' : 'Sin interacciones disponibles.'}</td></tr>`;
+      decorateSentiment();
+    }
+    renderPager('pagInter', inter, leerFiltrosInter().limite);
+    const btnCsv = $('btnExportarCsv');
+    if (btnCsv) btnCsv.disabled = !inter.filas.length;
+  }
+
+  async function cargarInteracciones() {
+    const f = leerFiltrosInter();
+    const peticion = ++inter.peticion;  // descarta respuestas viejas si los filtros cambian a media consulta
+    mostrarAvisoNuevas(false);
+    setBusy('wrapInteracciones', true);
+    try {
+      const params = new URLSearchParams();
+      ['canal', 'tema', 'tipo'].forEach((k) => { if (f[k]) params.set(k, f[k]); });
+      let pagina = inter.pagina;
+      let filas;
+      let total;
+      if (f.q || f.sentimiento) {
+        const todas = (await traerTodas('/api/interacciones', params, 'interacciones', 500, cacheInteracciones))
+          .filter(i => coincideInteraccion(i, f));
+        ({ pagina, filas } = paginar(todas, pagina, f.limite));
+        total = todas.length;
+      } else {
+        params.set('limit', f.limite);
+        params.set('offset', pagina * f.limite);
+        const data = await getJson(`/api/interacciones?${params}`);
+        total = Number(data.total) || 0;
+        filas = data.interacciones || [];
+      }
+      if (peticion !== inter.peticion) return;
+      Object.assign(inter, { pagina, total, cargada: true });
+      pintarInteracciones(filas, hayFiltrosInter(f));
+    } catch (err) {
+      if (peticion !== inter.peticion) return;
+      console.error('Error al cargar las interacciones', err);
+      Object.assign(inter, { filas: [], total: 0 });
+      filaVacia('tablaInteracciones', 9, 'No se pudieron cargar las interacciones. Intenta de nuevo.');
+      renderPager('pagInter', inter, f.limite);
+    } finally {
+      if (peticion === inter.peticion) setBusy('wrapInteracciones', false);
+    }
+  }
+  const cargarInteraccionesEnVivo = debounce(cargarInteracciones, 500);
+
+  // Las métricas del WebSocket ya traen las 10 interacciones más recientes: si la vista coincide
+  // (sin filtros, primera página, 10 filas) se pintan sin volver a consultar la API.
+  function refrescarInteracciones() {
+    const f = leerFiltrosInter();
+    if (tablaEnVivo(f) && f.limite === 10 && inter.metricas) {
+      inter.peticion += 1;
+      setBusy('wrapInteracciones', false);
+      mostrarAvisoNuevas(false);
+      inter.total = Number(inter.metricas.total_interacciones) || 0;
+      pintarInteracciones((inter.metricas.ultimas_interacciones || []).slice(0, 10), false);
+      return;
+    }
+    cargarInteracciones();
+  }
+
+  function actualizarTablaDesdeMetricas(metricas, nuevo) {
+    inter.metricas = metricas;
+    if (nuevo) cacheInteracciones.clear();
+    const f = leerFiltrosInter();
+    if (!tablaEnVivo(f)) {
+      // Con filtros activos no se mueve la tabla mientras se lee: solo se avisa.
+      if (nuevo) mostrarAvisoNuevas(true);
+      return;
+    }
+    if (f.limite === 10) refrescarInteracciones();
+    else if (nuevo || !inter.cargada) cargarInteraccionesEnVivo();
+  }
+
+  function irAPrimeraPagina() {
+    inter.pagina = 0;
+    refrescarInteracciones();
+  }
+
+  filtrosInter.buscar?.addEventListener('input', debounce(irAPrimeraPagina, 300));
+  ['canal', 'tema', 'tipo', 'sentimiento', 'filas'].forEach((k) => filtrosInter[k]?.addEventListener('change', irAPrimeraPagina));
+  $('btnLimpiarFiltros')?.addEventListener('click', () => {
+    if (filtrosInter.buscar) filtrosInter.buscar.value = '';
+    ['canal', 'tema', 'tipo', 'sentimiento'].forEach((k) => { if (filtrosInter[k]) filtrosInter[k].value = ''; });
+    if (filtrosInter.filas) filtrosInter.filas.value = '10';
+    irAPrimeraPagina();
+    filtrosInter.buscar?.focus();
+  });
+  $('pagInterAnterior')?.addEventListener('click', () => { inter.pagina = Math.max(0, inter.pagina - 1); refrescarInteracciones(); });
+  $('pagInterSiguiente')?.addEventListener('click', () => { inter.pagina += 1; refrescarInteracciones(); });
+  $('btnRefrescar')?.addEventListener('click', () => { cacheInteracciones.clear(); refrescarInteracciones(); });
+
+  // Detalle en un <dialog> nativo: atrapa el foco, cierra con Esc y lo devuelve a la fila al cerrar.
+  const dialogo = $('detalleDialog');
+  let detalleActual = '';
+
+  function nombreIdioma(codigo) {
+    if (!codigo) return '—';
+    try {
+      const nombre = new Intl.DisplayNames(['es'], { type: 'language' }).of(codigo);
+      return nombre && nombre !== codigo ? `${nombre.charAt(0).toUpperCase()}${nombre.slice(1)} (${codigo})` : codigo;
+    } catch {
+      return codigo;
+    }
+  }
+
+  function datoDetalle(titulo, valorHtml, ancho = false) {
+    return `<div class="detail-item${ancho ? ' detail-item--wide' : ''}"><dt>${titulo}</dt><dd>${valorHtml}</dd></div>`;
+  }
+
+  function pintarDetalle(i, cargando) {
+    const pendiente = cargando ? '<span class="muted">Cargando…</span>' : '—';
+    const tono = tonoSentimiento(i.sentimiento);
+    let etiquetas = pendiente;
+    if (Array.isArray(i.etiquetas)) {
+      etiquetas = i.etiquetas.length
+        ? `<span class="tag-list">${i.etiquetas.map(e => `<span class="pill">${escapeHtml(e)}</span>`).join('')}</span>`
+        : '<span class="muted">Sin etiquetas</span>';
+    }
+    let texto = '<span class="muted">Sin texto</span>';
+    if (i.tipo === 'reaccion') texto = '<span class="muted">Las reacciones no llevan texto.</span>';
+    else if (i.texto) texto = `<p class="detail-text">${escapeHtml(i.texto)}</p>`;
+
+    setText('detalleTitulo', `Interacción ${i.id_interaccion || ''}`.trim());
+    const cuerpo = $('detalleCuerpo');
+    if (!cuerpo) return;
+    cuerpo.innerHTML = `<dl class="detail-grid">
+      ${datoDetalle('Folio', `<span class="mono">${escapeHtml(i.id_interaccion || '—')}</span>`)}
+      ${datoDetalle('Usuario', `<span class="mono">${escapeHtml(i.id_usuario || '—')}</span>`)}
+      ${datoDetalle('Fecha y hora', escapeHtml(fmtFechaHora(i.timestamp)))}
+      ${datoDetalle('Canal', `<span class="pill">${escapeHtml(etiqueta(i.canal))}</span>`)}
+      ${datoDetalle('Tipo', escapeHtml(etiqueta(i.tipo)))}
+      ${datoDetalle('Tema', escapeHtml(etiqueta(i.tema)))}
+      ${datoDetalle('Sentimiento', `<span class="sentiment" data-sentiment="${tono}">${fmtNum(i.sentimiento)} · ${TONOS[tono]}</span>`)}
+      ${datoDetalle('Reacciones', `<span class="mono">${fmtNum(i.reacciones_recibidas)}</span>`)}
+      ${datoDetalle('Dispositivo', i.dispositivo ? escapeHtml(etiqueta(i.dispositivo)) : pendiente)}
+      ${datoDetalle('Idioma', i.idioma ? escapeHtml(nombreIdioma(i.idioma)) : pendiente)}
+      ${datoDetalle('Etiquetas', etiquetas, true)}
+      ${datoDetalle('Texto completo', texto, true)}
+    </dl>`;
+  }
+
+  async function abrirDetalle(i) {
+    if (!dialogo || !i) return;
+    detalleActual = i.id_interaccion || '';
+    // Las filas que llegan por WebSocket no traen idioma, dispositivo ni etiquetas: se piden aparte.
+    const completa = 'idioma' in i && 'dispositivo' in i && 'etiquetas' in i;
+    pintarDetalle(i, !completa && Boolean(detalleActual));
+    if (!dialogo.open) {
+      if (typeof dialogo.showModal === 'function') dialogo.showModal();
+      else dialogo.setAttribute('open', '');
+    }
+    if (completa || !detalleActual) return;
+    try {
+      const data = await getJson(`/api/interacciones/${encodeURIComponent(detalleActual)}`);
+      if (dialogo.open && detalleActual === data.id_interaccion) pintarDetalle(data, false);
+    } catch (err) {
+      console.error('No se pudo cargar el detalle de la interacción', err);
+      if (dialogo.open && detalleActual === i.id_interaccion) pintarDetalle(i, false);
+    }
+  }
+
+  function cerrarDetalle() {
+    if (!dialogo) return;
+    if (typeof dialogo.close === 'function') dialogo.close();
+    else dialogo.removeAttribute('open');
+  }
+
+  $('detalleCerrar')?.addEventListener('click', cerrarDetalle);
+  // Clic en el fondo oscuro (fuera de .modal-inner) cierra el detalle.
+  dialogo?.addEventListener('click', (ev) => { if (ev.target === dialogo) cerrarDetalle(); });
+
+  const tbodyInter = $('tablaInteracciones');
+  tbodyInter?.addEventListener('click', (ev) => {
+    const tr = ev.target.closest('tr[data-idx]');
+    if (tr) abrirDetalle(inter.filas[Number(tr.dataset.idx)]);
+  });
+  tbodyInter?.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Enter' && ev.key !== ' ') return;
+    const tr = ev.target.closest('tr[data-idx]');
+    if (!tr) return;
+    ev.preventDefault();
+    abrirDetalle(inter.filas[Number(tr.dataset.idx)]);
+  });
+
+  // CSV de las filas visibles. Los textos que empiezan con = + - @ se prefijan con ' para que
+  // Excel no los ejecute como fórmula; el BOM inicial hace que Excel respete los acentos.
+  function celdaCsv(v) {
+    if (v == null) return '';
+    let s = String(v);
+    if (typeof v !== 'number' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+    return /[",;\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  }
+
+  function exportarCsv() {
+    if (!inter.filas.length) return;
+    const columnas = [
+      ['Folio', i => i.id_interaccion],
+      ['Usuario', i => i.id_usuario],
+      ['Fecha y hora (UTC)', i => i.timestamp],
+      ['Canal', i => etiqueta(i.canal)],
+      ['Tipo', i => etiqueta(i.tipo)],
+      ['Tema', i => etiqueta(i.tema)],
+      ['Sentimiento', i => (i.sentimiento == null ? null : Number(i.sentimiento))],
+      ['Tono', i => TONOS[tonoSentimiento(i.sentimiento)]],
+      ['Reacciones', i => (i.reacciones_recibidas == null ? null : Number(i.reacciones_recibidas))],
+      ['Texto', i => (i.tipo === 'reaccion' ? '' : i.texto)]
+    ];
+    const lineas = [
+      columnas.map(([titulo]) => celdaCsv(titulo)).join(','),
+      ...inter.filas.map(i => columnas.map(([, valor]) => celdaCsv(valor(i))).join(','))
+    ];
+    const blob = new Blob([`﻿${lineas.join('\r\n')}\r\n`], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const sello = new Date().toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-');
+    const enlace = document.createElement('a');
+    enlace.href = url;
+    enlace.download = `interacciones_${sello}.csv`;
+    document.body.appendChild(enlace);
+    enlace.click();
+    enlace.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  $('btnExportarCsv')?.addEventListener('click', exportarCsv);
+
+  // ── Explorador histórico (D1): padrón y cuarentena ──────────────────────
+  const filtrosPadron = { buscar: $('pBuscar'), plataforma: $('pPlataforma'), artista: $('pArtista'), filas: $('pFilas') };
+  const padron = { pagina: 0, total: 0, filas: [], peticion: 0, cargada: false };
+  const cachePadron = new Map();
+
+  function leerFiltrosPadron() {
+    return {
+      q: (filtrosPadron.buscar?.value || '').trim(),
+      plataforma: filtrosPadron.plataforma?.value || '',
+      artista: filtrosPadron.artista?.value || '',
+      limite: Number(filtrosPadron.filas?.value) || 25
+    };
+  }
+
+  // La API ya omite la ubicación de quien no dio consentimiento; aquí se dice explícitamente.
+  function ubicacionMiembro(u) {
+    if (Number(u.consentimiento_datos) === 0) {
+      return '<span class="privacy-tag" title="El miembro no autorizó compartir su ubicación">Oculto por privacidad</span>';
+    }
+    const partes = [u.ciudad, u.estado, u.pais].filter(Boolean);
+    return partes.length ? escapeHtml(partes.join(', ')) : '<span class="muted">Sin dato</span>';
+  }
+
+  function pintarPadron(filas, filtrado) {
+    padron.filas = filas || [];
+    const tbody = $('tablaPadron');
+    if (tbody) {
+      tbody.innerHTML = padron.filas.length
+        ? padron.filas.map(u => `<tr>
+            <td class="mono">${escapeHtml(u.id_usuario || '')}</td>
+            <td>${escapeHtml(u.alias || '—')}</td>
+            <td>${escapeHtml(etiqueta(u.plataforma_principal))}</td>
+            <td>${escapeHtml(etiqueta(u.interes_principal))}</td>
+            <td>${Number(u.es_artista) === 1 ? 'Sí' : 'No'}</td>
+            <td>${escapeHtml(etiqueta(u.estatus))}</td>
+            <td class="mono">${u.mensajes_30d == null ? '—' : fmtNum(u.mensajes_30d)}</td>
+            <td class="mono">${escapeHtml(fmtFechaHora(u.ultima_actividad))}</td>
+            <td>${ubicacionMiembro(u)}</td>
+          </tr>`).join('')
+        : `<tr><td colspan="9" class="empty">${filtrado ? 'Ningún miembro coincide con los filtros.' : 'Sin miembros registrados.'}</td></tr>`;
+    }
+    renderPager('pagPadron', padron, leerFiltrosPadron().limite);
+  }
+
+  async function cargarPadron() {
+    const f = leerFiltrosPadron();
+    const peticion = ++padron.peticion;
+    setBusy('wrapPadron', true);
+    try {
+      const params = new URLSearchParams();
+      if (f.plataforma) params.set('plataforma', f.plataforma);
+      if (f.artista !== '') params.set('es_artista', f.artista);
+      let pagina = padron.pagina;
+      let filas;
+      let total;
+      if (f.q) {
+        // El endpoint no busca por texto: se recorre el padrón filtrado (lotes de 200) y se busca aquí.
+        const q = f.q.toLowerCase();
+        const todos = (await traerTodas('/api/historico/usuarios', params, 'usuarios', 200, cachePadron))
+          .filter(u => [u.id_usuario, u.alias].some(v => String(v || '').toLowerCase().includes(q)));
+        ({ pagina, filas } = paginar(todos, pagina, f.limite));
+        total = todos.length;
+      } else {
+        params.set('limit', f.limite);
+        params.set('offset', pagina * f.limite);
+        const data = await getJson(`/api/historico/usuarios?${params}`);
+        total = Number(data.total) || 0;
+        filas = data.usuarios || [];
+      }
+      if (peticion !== padron.peticion) return;
+      Object.assign(padron, { pagina, total, cargada: true });
+      pintarPadron(filas, Boolean(f.q || f.plataforma || f.artista));
+    } catch (err) {
+      if (peticion !== padron.peticion) return;
+      console.error('Error al cargar el padrón', err);
+      Object.assign(padron, { filas: [], total: 0 });
+      filaVacia('tablaPadron', 9, 'No se pudo cargar el padrón. Intenta de nuevo.');
+      renderPager('pagPadron', padron, f.limite);
+    } finally {
+      if (peticion === padron.peticion) setBusy('wrapPadron', false);
+    }
+  }
+
+  function padronPrimeraPagina() {
+    padron.pagina = 0;
+    cargarPadron();
+  }
+  filtrosPadron.buscar?.addEventListener('input', debounce(padronPrimeraPagina, 300));
+  ['plataforma', 'artista', 'filas'].forEach((k) => filtrosPadron[k]?.addEventListener('change', padronPrimeraPagina));
+  $('pLimpiar')?.addEventListener('click', () => {
+    if (filtrosPadron.buscar) filtrosPadron.buscar.value = '';
+    if (filtrosPadron.plataforma) filtrosPadron.plataforma.value = '';
+    if (filtrosPadron.artista) filtrosPadron.artista.value = '';
+    if (filtrosPadron.filas) filtrosPadron.filas.value = '25';
+    padronPrimeraPagina();
+    filtrosPadron.buscar?.focus();
+  });
+  $('pagPadronAnterior')?.addEventListener('click', () => { padron.pagina = Math.max(0, padron.pagina - 1); cargarPadron(); });
+  $('pagPadronSiguiente')?.addEventListener('click', () => { padron.pagina += 1; cargarPadron(); });
+
+  const MOTIVOS_RECHAZO = { FK_USUARIO_INEXISTENTE: 'El usuario de origen no existe en el padrón' };
+  const filtrosCuar = { motivo: $('cMotivo'), filas: $('cFilas') };
+  const cuar = { pagina: 0, total: 0, filas: [], peticion: 0, cargada: false };
+
+  function etiquetaMotivo(m) {
+    const codigo = escapeHtml(m || 'SIN_MOTIVO');
+    const ayuda = MOTIVOS_RECHAZO[m] ? ` title="${escapeHtml(MOTIVOS_RECHAZO[m])}"` : '';
+    return `<span class="code-tag"${ayuda}>${codigo}</span>`;
+  }
+
+  function pintarCuarentena(data, filtrado) {
+    cuar.filas = data.registros || [];
+    const porMotivo = data.por_motivo || [];
+    llenarSelect(filtrosCuar.motivo, porMotivo.filter(m => m.motivo_rechazo).map(m => ({ valor: m.motivo_rechazo, texto: `${m.motivo_rechazo} (${fmtEntero(m.total)})` })));
+    const resumen = $('cuarResumen');
+    if (resumen) {
+      resumen.innerHTML = porMotivo.map(m => `<span class="summary-chip">${etiquetaMotivo(m.motivo_rechazo)}<span class="mono">${fmtEntero(m.total)}</span>${MOTIVOS_RECHAZO[m.motivo_rechazo] ? `<span class="muted">${escapeHtml(MOTIVOS_RECHAZO[m.motivo_rechazo])}</span>` : ''}</span>`).join('');
+    }
+    const tbody = $('tablaCuarentena');
+    if (tbody) {
+      tbody.innerHTML = cuar.filas.length
+        ? cuar.filas.map(r => `<tr>
+            <td class="mono">${escapeHtml(r.id_interaccion || '')}</td>
+            <td class="mono">${escapeHtml(r.id_usuario_origen || '—')}</td>
+            <td class="mono">${escapeHtml(fmtFechaHora(r.timestamp_origen))}</td>
+            <td><span class="pill">${escapeHtml(etiqueta(r.canal))}</span></td>
+            <td>${escapeHtml(etiqueta(r.tipo))}</td>
+            <td>${escapeHtml(etiqueta(r.tema))}</td>
+            <td>${etiquetaMotivo(r.motivo_rechazo)}</td>
+          </tr>`).join('')
+        : `<tr><td colspan="7" class="empty">${filtrado ? 'Ningún registro coincide con el motivo elegido.' : 'No hay registros en cuarentena.'}</td></tr>`;
+    }
+    renderPager('pagCuar', cuar, Number(filtrosCuar.filas?.value) || 25);
+  }
+
+  async function cargarCuarentena() {
+    const motivo = filtrosCuar.motivo?.value || '';
+    const limite = Number(filtrosCuar.filas?.value) || 25;
+    const peticion = ++cuar.peticion;
+    setBusy('wrapCuarentena', true);
+    try {
+      const params = new URLSearchParams({ limit: limite, offset: cuar.pagina * limite });
+      if (motivo) params.set('motivo', motivo);
+      const data = await getJson(`/api/historico/cuarentena?${params}`);
+      if (peticion !== cuar.peticion) return;
+      Object.assign(cuar, { total: Number(data.total) || 0, cargada: true });
+      pintarCuarentena(data, Boolean(motivo));
+    } catch (err) {
+      if (peticion !== cuar.peticion) return;
+      console.error('Error al cargar la cuarentena', err);
+      Object.assign(cuar, { filas: [], total: 0 });
+      filaVacia('tablaCuarentena', 7, 'No se pudo cargar la cuarentena. Intenta de nuevo.');
+      renderPager('pagCuar', cuar, limite);
+    } finally {
+      if (peticion === cuar.peticion) setBusy('wrapCuarentena', false);
+    }
+  }
+
+  function cuarPrimeraPagina() {
+    cuar.pagina = 0;
+    cargarCuarentena();
+  }
+  ['motivo', 'filas'].forEach((k) => filtrosCuar[k]?.addEventListener('change', cuarPrimeraPagina));
+  $('cLimpiar')?.addEventListener('click', () => {
+    if (filtrosCuar.motivo) filtrosCuar.motivo.value = '';
+    if (filtrosCuar.filas) filtrosCuar.filas.value = '25';
+    cuarPrimeraPagina();
+  });
+  $('pagCuarAnterior')?.addEventListener('click', () => { cuar.pagina = Math.max(0, cuar.pagina - 1); cargarCuarentena(); });
+  $('pagCuarSiguiente')?.addEventListener('click', () => { cuar.pagina += 1; cargarCuarentena(); });
+
+  // Pestañas del explorador (patrón WAI-ARIA: flechas, Inicio y Fin mueven la selección).
+  const tabsExplorador = Array.from(document.querySelectorAll('.segmented [role="tab"]'));
+  function activarPestana(tab, enfocar = false) {
+    tabsExplorador.forEach((t) => {
+      const activa = t === tab;
+      t.setAttribute('aria-selected', String(activa));
+      t.tabIndex = activa ? 0 : -1;
+      const panel = $(t.getAttribute('aria-controls'));
+      if (panel) panel.hidden = !activa;
+    });
+    if (enfocar) tab.focus();
+    if (tab.id === 'tabCuarentena' && !cuar.cargada) cargarCuarentena();
+    if (tab.id === 'tabPadron' && !padron.cargada) cargarPadron();
+  }
+  tabsExplorador.forEach((tab, idx) => {
+    tab.addEventListener('click', () => activarPestana(tab));
+    tab.addEventListener('keydown', (ev) => {
+      const destino = {
+        ArrowRight: tabsExplorador[(idx + 1) % tabsExplorador.length],
+        ArrowLeft: tabsExplorador[(idx - 1 + tabsExplorador.length) % tabsExplorador.length],
+        Home: tabsExplorador[0],
+        End: tabsExplorador[tabsExplorador.length - 1]
+      }[ev.key];
+      if (!destino) return;
+      ev.preventDefault();
+      activarPestana(destino, true);
+    });
+  });
+
   async function init() {
     syncThemeToggle();
     refreshChartThemes();
     connectWs();
-    await Promise.allSettled([verifySession(), loadHistoricos()]);
+    await Promise.allSettled([verifySession(), loadHistoricos(), cargarPadron()]);
+    // Si ni el WebSocket ni el histórico trajeron métricas, la tabla se llena directo desde la API.
+    if (!inter.metricas && !inter.cargada) cargarInteracciones();
   }
 
   init();
