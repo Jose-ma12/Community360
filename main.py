@@ -1151,6 +1151,18 @@ async def websocket_endpoint(websocket: WebSocket):
     # Se acepta primero para que el navegador reciba el código de cierre real
     # (si se cierra antes de aceptar, el navegador solo ve 1006 y no sabe por qué).
     await websocket.accept()
+
+    async def _rechazar_ws(codigo: int, motivo: str):
+        try:
+            await websocket.send_text(json.dumps({"type": "error", "code": codigo, "detail": motivo}, ensure_ascii=False))
+        except Exception:
+            pass
+        try:
+            await websocket.close(code=codigo, reason=motivo)
+        except Exception:
+            pass
+        await asyncio.sleep(0.15)
+
     # El token llega en el PRIMER mensaje ({"type":"auth","token":"..."}) y no en la URL:
     # así no queda escrito en los registros de uvicorn ni en el historial del navegador.
     try:
@@ -1158,13 +1170,6 @@ async def websocket_endpoint(websocket: WebSocket):
         token = primero.get("token") if isinstance(primero, dict) and primero.get("type") == "auth" else None
     except Exception:
         token = None
-
-    async def _rechazar_ws(codigo: int, motivo: str):
-        try:
-            await websocket.send_text(json.dumps({"type": "error", "code": codigo, "detail": motivo}, ensure_ascii=False))
-        except Exception:
-            pass
-        await websocket.close(code=codigo, reason=motivo)
 
     if not token or not isinstance(token, str):
         await _rechazar_ws(1008, "No autorizado")
