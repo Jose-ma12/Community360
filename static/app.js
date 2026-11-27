@@ -1262,10 +1262,12 @@
   const cuar = { pagina: 0, total: 0, filas: [], peticion: 0, cargada: false, orden: { campo: '', dir: '' } };
   const cacheCuarentena = new Map();
 
+  // A la vista, el motivo legible ("Fk usuario inexistente"); el código original queda en el title con su descripción.
   function etiquetaMotivo(m) {
-    const codigo = escapeHtml(m || 'SIN_MOTIVO');
-    const ayuda = MOTIVOS_RECHAZO[m] ? ` title="${escapeHtml(MOTIVOS_RECHAZO[m])}"` : '';
-    return `<span class="code-tag"${ayuda}>${codigo}</span>`;
+    const codigo = m || 'SIN_MOTIVO';
+    const legible = etiqueta(String(codigo).toLowerCase());
+    const ayuda = MOTIVOS_RECHAZO[m] ? `${codigo}: ${MOTIVOS_RECHAZO[m]}` : codigo;
+    return `<span class="code-tag" title="${escapeHtml(ayuda)}">${escapeHtml(legible)}</span>`;
   }
 
   function pintarCuarentena(data, filtrado) {

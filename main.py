@@ -820,9 +820,11 @@ def login(req: LoginRequest, request: Request, response: Response):
     )
     rows = res.get("results", [])
     user = rows[0] if rows else None
-    password_hash = ((user or {}).get("password_hash") or "").encode("utf-8")
+    password_hash = ((user or {}).get("password_hash") or "").encode("utf-8") or HASH_RELLENO
+    # bcrypt se ejecuta siempre (con un hash de relleno si el usuario no existe) para que el tiempo de respuesta no revele qué usuarios existen.
     try:
-        valida = bool(user) and bcrypt.checkpw(clave_ingresada.encode("utf-8"), password_hash)
+        coincide = bcrypt.checkpw(clave_ingresada.encode("utf-8"), password_hash)
+        valida = bool(user) and coincide
     except ValueError:
         valida = False
     # Mismo mensaje para usuario inexistente, contraseña incorrecta o usuario inactivo:
