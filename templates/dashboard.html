@@ -4,12 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Community360 | Panel</title>
-  <link rel="icon" href="data:,">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2307090D'/%3E%3Crect x='3' y='3' width='58' height='58' rx='11' fill='none' stroke='%23233041' stroke-width='2'/%3E%3Ctext x='32' y='39' font-family='Consolas,monospace' font-size='17' font-weight='700' text-anchor='middle' fill='%238FB3E0'%3EC360%3C/text%3E%3C/svg%3E">
   <script src="/static/tema.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;family=Space+Grotesk:wght@500;600&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=20261126">
+  <link rel="stylesheet" href="/static/styles.css?v=20261126b">
   <script src="/static/vendor/chart.umd.min.js"></script>
 </head>
 <body class="dashboard-body">
@@ -64,6 +64,7 @@
 
       <section class="screen screen--tiempo-real" id="seccion-tiempo-real" aria-labelledby="titulo-tiempo-real">
         <h2 class="sr-only" id="titulo-tiempo-real">Actividad en tiempo real</h2>
+        <div class="screen-head"><span class="source-badge" data-source="live"><span class="source-dot" aria-hidden="true"></span>Firestore · WebSockets en vivo</span></div>
         <div class="kpi-hero">
           <article class="kpi-cell">
             <div class="label">Total de interacciones</div>
@@ -101,6 +102,7 @@
 
       <section class="screen screen--pulso" id="zona-pulso" aria-labelledby="titulo-pulso" hidden>
         <h2 class="sr-only" id="titulo-pulso">Pulso en vivo</h2>
+        <div class="screen-head"><span class="source-badge" data-source="live"><span class="source-dot" aria-hidden="true"></span>Firestore · WebSockets en vivo</span></div>
         <div class="screen-grid screen-grid--pulso">
           <article class="card">
             <h3>Actividad por día y horario</h3>
@@ -116,6 +118,7 @@
 
       <section class="screen screen--interacciones" id="tabla-recientes" aria-labelledby="titulo-interacciones" hidden>
         <h2 class="sr-only" id="titulo-interacciones">Interacciones</h2>
+        <div class="screen-head"><span class="source-badge" data-source="live"><span class="source-dot" aria-hidden="true"></span>Firestore · WebSockets en vivo</span></div>
         <article class="card table-card">
           <div class="card-head">
             <h3>Interacciones</h3>
@@ -219,6 +222,7 @@
 
       <section class="screen screen--historico" id="seccion-historicos" aria-labelledby="titulo-historico" hidden>
         <h2 class="sr-only" id="titulo-historico">Resumen histórico</h2>
+        <div class="screen-head"><span class="source-badge" data-source="d1"><span class="source-dot" aria-hidden="true"></span>Cloudflare D1 · API REST</span></div>
         <div class="banner" id="bannerPrivacidad">Privacidad: las ciudades solo incluyen a los miembros que autorizaron compartir su ubicación.</div>
 
         <div class="historico-kpis">
@@ -377,6 +381,9 @@
     </div>
   </dialog>
 
-  <script src="/static/app.js?v=20261126"></script>
+  <!-- Avisos flotantes de altas, ediciones y borrados recibidos por WebSocket (app.js: mostrarToast). -->
+  <div class="toast-stack" id="toastStack" role="status" aria-live="polite" aria-atomic="false"></div>
+
+  <script src="/static/app.js?v=20261126b"></script>
 </body>
 </html>

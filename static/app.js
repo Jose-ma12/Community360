@@ -248,6 +248,32 @@
     while (wsLog.children.length > 30) wsLog.removeChild(wsLog.lastChild);
   }
 
+  // Aviso flotante de 4 s por cada alta, edición o borrado; se apilan como máximo 3.
+  const toastStack = $('toastStack');
+  const DURACION_TOAST = 4000;
+  function mostrarToast(evt) {
+    if (!toastStack) return;
+    const tipo = evt.evento || evt.type;
+    const info = EVENTOS_BITACORA[tipo] || { texto: etiqueta(tipo) };
+    const folio = evt.interaccion?.id_interaccion || evt.id_interaccion || '';
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.dataset.event = tipo;
+    const titulo = document.createElement('span');
+    titulo.className = 'toast-title';
+    titulo.textContent = info.texto;
+    const meta = document.createElement('span');
+    meta.className = 'toast-meta';
+    meta.textContent = [folio ? `Folio ${folio}` : '', fmtHora(evt.timestamp_utc)].filter(Boolean).join(' · ');
+    toast.append(titulo, meta);
+    toastStack.append(toast);
+    while (toastStack.children.length > 3) toastStack.firstElementChild.remove();
+    setTimeout(() => {
+      toast.classList.add('is-leaving');
+      setTimeout(() => toast.remove(), 300);
+    }, DURACION_TOAST);
+  }
+
   function summarizeEvent(evt) {
     if (evt.error) return MENSAJE_ERROR_EN_VIVO;
     if (evt.metricas) {
@@ -322,6 +348,25 @@
   };
   const chartLegendLabels = { color: chartTickColor, padding: 12, usePointStyle: true, boxWidth: 8 };
 
+  function fmtPct(parte, total) {
+    const t = Number(total) || 0;
+    const pct = t ? (Number(parte || 0) / t) * 100 : 0;
+    return `${pct.toLocaleString('es-MX', { maximumFractionDigits: 1 })}%`;
+  }
+
+  // Tooltip "Nombre: valor (porcentaje)". Por defecto el porcentaje es sobre la suma de la serie;
+  // totalDe(ctx) permite otro denominador y sufijo describe de qué es el porcentaje.
+  function tooltipConPorcentaje(totalDe, sufijo = '') {
+    return {
+      label: (ctx) => {
+        const valor = Number(ctx.raw) || 0;
+        const total = totalDe ? totalDe(ctx) : ctx.dataset.data.reduce((s, v) => s + (Number(v) || 0), 0);
+        const nombre = ctx.chart.config.type === 'doughnut' ? ctx.label : ctx.dataset.label;
+        return `${nombre}: ${fmtEntero(valor)} (${fmtPct(valor, total)}${sufijo})`;
+      }
+    };
+  }
+
   // Escala del mapa de calor: de --tarjeta-2 (sin actividad) a --acento (máxima). Al usar variables CSS
   // se adapta sola al cambiar de tema.
   function heatColor(ratio) {
@@ -339,7 +384,7 @@
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { display: false }, tooltip: { ...chartTooltip } },
+        plugins: { legend: { display: false }, tooltip: { ...chartTooltip, callbacks: tooltipConPorcentaje() } },
         scales: {
           y: { beginAtZero: true, ticks: { precision: 0, color: chartTickColor }, grid: { color: chartGridColor, drawTicks: false }, border: { color: chartGridColor } },
           x: { ticks: { color: chartTickColor }, grid: { display: false }, border: { color: chartGridColor } }
@@ -368,7 +413,7 @@
         responsive: true,
         maintainAspectRatio: false,
         cutout: '68%',
-        plugins: { legend: { position: 'bottom', labels: { ...chartLegendLabels, color: chartTickColor } }, tooltip: { ...chartTooltip } }
+        plugins: { legend: { position: 'bottom', labels: { ...chartLegendLabels, color: chartTickColor } }, tooltip: { ...chartTooltip, callbacks: tooltipConPorcentaje() } }
       }
     });
   }
@@ -462,6 +507,7 @@
         logWsEvent({ type: 'error_metricas', evento: 'error_metricas', timestamp_utc: new Date().toISOString(), error: msg.error });
       }
       if (msg.metricas) applyMetricas(msg.metricas, { nuevo: EVENTOS_CAMBIO.has(msg.type || msg.evento) });
+      if (EVENTOS_CAMBIO.has(msg.type || msg.evento)) mostrarToast(msg);
       if (['conexion_inicial', 'interaccion_creada', 'interaccion_actualizada', 'interaccion_eliminada', 'conexion'].includes(msg.type || msg.evento)) {
         logWsEvent(msg);
       }
@@ -505,11 +551,20 @@
     }
   }
 
+  function setKpiConPorcentaje(id, valor, total) {
+    const el = $(id);
+    if (!el) return;
+    const pct = document.createElement('span');
+    pct.className = 'kpi-pct';
+    pct.textContent = fmtPct(valor, total);
+    el.replaceChildren(document.createTextNode(fmtNum(valor)), pct);
+  }
+
   function renderHistoricos(data) {
     const r = data.resumen_usuarios || {};
     setText('hTotalUsuarios', fmtNum(r.total_usuarios));
-    setText('hConConsent', fmtNum(r.con_consentimiento_geo));
-    setText('hSinConsent', fmtNum(r.sin_consentimiento_geo));
+    setKpiConPorcentaje('hConConsent', r.con_consentimiento_geo, r.total_usuarios);
+    setKpiConPorcentaje('hSinConsent', r.sin_consentimiento_geo, r.total_usuarios);
     setText('hCuarentena', fmtNum(data.interacciones_cuarentena));
     setText('bannerPrivacidad', 'Privacidad: las ciudades solo incluyen a los miembros que autorizaron compartir su ubicación.');
 
@@ -522,7 +577,7 @@
         indexAxis: 'y',
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { display: false }, tooltip: { ...chartTooltip } },
+        plugins: { legend: { display: false }, tooltip: { ...chartTooltip, callbacks: tooltipConPorcentaje() } },
         scales: {
           x: { beginAtZero: true, ticks: { precision: 0, color: chartTickColor }, grid: { color: chartGridColor, drawTicks: false }, border: { color: chartGridColor } },
           y: { ticks: { color: chartTickColor }, grid: { display: false }, border: { color: chartGridColor } }
@@ -551,7 +606,7 @@
         responsive: true,
         maintainAspectRatio: false,
         cutout: '68%',
-        plugins: { legend: { position: 'bottom', labels: { ...chartLegendLabels, color: chartTickColor } }, tooltip: { ...chartTooltip } }
+        plugins: { legend: { position: 'bottom', labels: { ...chartLegendLabels, color: chartTickColor } }, tooltip: { ...chartTooltip, callbacks: tooltipConPorcentaje() } }
       }
     });
 
@@ -570,7 +625,14 @@
         maintainAspectRatio: false,
         plugins: {
           legend: { display: false },
-          tooltip: { ...chartTooltip, callbacks: { title: (items) => ciudadesNombres[items[0]?.dataIndex] ?? '' } }
+          // Las ciudades son un top 10: el porcentaje se calcula sobre todos los miembros con ubicación autorizada.
+          tooltip: {
+            ...chartTooltip,
+            callbacks: {
+              title: (items) => ciudadesNombres[items[0]?.dataIndex] ?? '',
+              ...tooltipConPorcentaje(() => r.con_consentimiento_geo, ' de los autorizados')
+            }
+          }
         },
         scales: {
           x: { beginAtZero: true, ticks: { precision: 0, color: chartTickColor }, grid: { color: chartGridColor, drawTicks: false }, border: { display: false, color: chartGridColor } },

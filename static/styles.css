@@ -824,6 +824,102 @@ table.data tbody tr.row-link:focus-visible { outline: 2px solid var(--acento); o
 }
 .tag-list { display: flex; flex-wrap: wrap; gap: 6px; }
 
+/* ── Insignia de origen de datos (.screen-head > .source-badge) ─────────── */
+.screen-head {
+  grid-column: span 12;
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+  margin-bottom: -6px;
+}
+.source-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  padding: 3px 10px;
+  overflow: hidden;
+  border: 1px solid var(--borde-2);
+  border-radius: 999px;
+  background: var(--tarjeta);
+  color: var(--texto-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: .02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.source-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--salvia);
+}
+.source-badge[data-source="d1"] .source-dot { background: var(--ocre); }
+
+/* ── Porcentaje junto a los KPI de privacidad (span.kpi-pct lo pone app.js) ── */
+.kpi-pct {
+  margin-left: 6px;
+  color: var(--texto-3);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+/* ── Toasts de actividad en vivo (#toastStack, esquina inferior derecha) ── */
+.toast-stack {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: min(340px, calc(100vw - 32px));
+  pointer-events: none;
+}
+.toast {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 220px;
+  max-width: 100%;
+  padding: 10px 14px 10px 28px;
+  border: 1px solid var(--borde-2);
+  border-radius: 10px;
+  background: var(--tarjeta);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .25);
+  color: var(--texto);
+  font-size: 13px;
+  animation: toast-entra .2s ease-out;
+  transition: opacity .3s ease, transform .3s ease;
+}
+.toast.is-leaving { opacity: 0; transform: translateY(6px); }
+.toast::before {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 15px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--acento);
+}
+.toast[data-event="interaccion_creada"]::before { background: var(--salvia); }
+.toast[data-event="interaccion_actualizada"]::before { background: var(--ocre); }
+.toast[data-event="interaccion_eliminada"]::before { background: var(--peligro); }
+.toast-title { font-weight: 500; }
+.toast-meta { color: var(--texto-3); font-family: var(--font-mono); font-size: 11px; }
+
+@keyframes toast-entra {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
 /* ── Responsive ─────────────────────────────────────────────────────────── */
 @media (max-width: 1280px) {
   .topbar-actions .timestamp { display: none; }
@@ -892,6 +988,8 @@ table.data tbody tr.row-link:focus-visible { outline: 2px solid var(--acento); o
   .pager-btns { flex: 1 1 100%; }
   .pager-btns .btn { flex: 1 1 0; }
   .detail-grid { grid-template-columns: minmax(0, 1fr); }
+  .screen-head { justify-content: flex-start; margin-bottom: -4px; }
+  .toast-stack { right: 16px; bottom: 16px; left: 16px; align-items: stretch; max-width: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
