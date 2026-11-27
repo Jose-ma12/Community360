@@ -32,12 +32,18 @@ def cargar_credenciales():
         "CLOUDFLARE_ACCOUNT_ID",
         "CLOUDFLARE_DATABASE_ID",
         "CLOUDFLARE_API_TOKEN",
-        "FIREBASE_CREDENTIALS_PATH",
     ]
     faltantes = [nombre for nombre in requeridas if not os.getenv(nombre)]
     if faltantes:
         raise RuntimeError(f"Variables de entorno faltantes: {', '.join(faltantes)}")
-    ruta_credenciales = BASE_DIR / os.getenv("FIREBASE_CREDENTIALS_PATH")
+    cred_json = os.getenv("FIREBASE_CREDENTIALS_JSON")
+    if cred_json:
+        json.loads(cred_json)
+        return
+    nombre_credenciales = os.getenv("FIREBASE_CREDENTIALS_PATH")
+    if not nombre_credenciales:
+        raise RuntimeError("Variable de entorno faltante: FIREBASE_CREDENTIALS_PATH")
+    ruta_credenciales = BASE_DIR / nombre_credenciales
     if not ruta_credenciales.is_file():
         raise FileNotFoundError("No se encontró el archivo de credenciales de Firebase")
 
@@ -401,7 +407,12 @@ def etapa_8_carga(maestros, ubicacion, metricas, cuarentena, validas, metricas_t
     print("[ETAPA 8] D1 cargado: " + ", ".join(f"{k}={v}" for k, v in conteos_d1.items()))
 
     if not firebase_admin._apps:
-        firebase_admin.initialize_app(credentials.Certificate(str(BASE_DIR / os.getenv("FIREBASE_CREDENTIALS_PATH"))))
+        cred_json = os.getenv("FIREBASE_CREDENTIALS_JSON")
+        if cred_json:
+            certificado = credentials.Certificate(json.loads(cred_json))
+        else:
+            certificado = credentials.Certificate(str(BASE_DIR / os.getenv("FIREBASE_CREDENTIALS_PATH")))
+        firebase_admin.initialize_app(certificado)
     db = firestore.client()
     campos_firestore = [
         "id_interaccion", "id_usuario", "timestamp", "canal", "tipo", "texto", "tema",
