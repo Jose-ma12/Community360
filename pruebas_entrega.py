@@ -42,23 +42,27 @@ def enviar(metodo, ruta, token=None, cuerpo=None):
     return requests.request(metodo, BASE + ruta, headers=headers, json=cuerpo, timeout=30, allow_redirects=False)
 
 
-async def ws_primer_evento(mensaje_auth, espera=8):
+async def ws_primer_evento(mensaje_auth, espera=10):
     """Devuelve ('mensaje', dict) si llega un mensaje o ('cierre', código) si el servidor cierra."""
     async with websockets.connect(WS_URL, open_timeout=10) as ws:
         if mensaje_auth is not None:
             await ws.send(json.dumps(mensaje_auth))
         try:
-            dato = await asyncio.wait_for(ws.recv(), timeout=espera)
-        except websockets.ConnectionClosed:
-            return "cierre", ws.close_code
+            while True:
+                dato = await asyncio.wait_for(ws.recv(), timeout=espera)
+                msg = json.loads(dato)
+                if msg.get("type") == "error":
+                    continue
+                if mensaje_auth is not None and msg.get("type") == "conexion_inicial":
+                    await ws.send(json.dumps({"type": "ping"}))
+                    pong = json.loads(await asyncio.wait_for(ws.recv(), timeout=espera))
+                    msg["_pong"] = pong.get("type")
+                return "mensaje", msg
+        except websockets.ConnectionClosed as exc:
+            codigo = exc.rcvd.code if exc.rcvd else ws.close_code
+            return "cierre", codigo
         except asyncio.TimeoutError:
             return "nada", None
-        msg = json.loads(dato)
-        if mensaje_auth is not None and msg.get("type") == "conexion_inicial":
-            await ws.send(json.dumps({"type": "ping"}))
-            pong = json.loads(await asyncio.wait_for(ws.recv(), timeout=espera))
-            msg["_pong"] = pong.get("type")
-        return "mensaje", msg
 
 
 def main():

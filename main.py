@@ -1158,17 +1158,25 @@ async def websocket_endpoint(websocket: WebSocket):
         token = primero.get("token") if isinstance(primero, dict) and primero.get("type") == "auth" else None
     except Exception:
         token = None
+
+    async def _rechazar_ws(codigo: int, motivo: str):
+        try:
+            await websocket.send_text(json.dumps({"type": "error", "code": codigo, "detail": motivo}, ensure_ascii=False))
+        except Exception:
+            pass
+        await websocket.close(code=codigo, reason=motivo)
+
     if not token or not isinstance(token, str):
-        await websocket.close(code=1008)
+        await _rechazar_ws(1008, "No autorizado")
         return
     try:
         sesion = await run_in_threadpool(validar_sesion, token)
     except HTTPException as exc:
         # 1008 = token inválido o revocado (el frontend manda al login); 1013 = servicio no disponible, reintentar
-        await websocket.close(code=1008 if exc.status_code == 401 else 1013)
+        await _rechazar_ws(1008 if exc.status_code == 401 else 1013, exc.detail if exc.status_code == 401 else "Servicio no disponible")
         return
     except Exception:
-        await websocket.close(code=1013)
+        await _rechazar_ws(1013, "Servicio no disponible")
         return
 
     await gestor_ws.conectar(websocket, {"jti": sesion["jti"], "exp": sesion.get("exp")})
