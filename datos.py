@@ -38,12 +38,15 @@ def cargar_credenciales():
         raise RuntimeError(f"Variables de entorno faltantes: {', '.join(faltantes)}")
     cred_json = os.getenv("FIREBASE_CREDENTIALS_JSON")
     if cred_json:
-        json.loads(cred_json)
+        try:
+            json.loads(cred_json)
+        except json.JSONDecodeError as exc:
+            raise ValueError("FIREBASE_CREDENTIALS_JSON no contiene un JSON válido") from exc
         return
-    nombre_credenciales = os.getenv("FIREBASE_CREDENTIALS_PATH")
-    if not nombre_credenciales:
-        raise RuntimeError("Variable de entorno faltante: FIREBASE_CREDENTIALS_PATH")
-    ruta_credenciales = BASE_DIR / nombre_credenciales
+    cred_path = os.getenv("FIREBASE_CREDENTIALS_PATH")
+    if not cred_path:
+        raise RuntimeError("Falta FIREBASE_CREDENTIALS_JSON o FIREBASE_CREDENTIALS_PATH")
+    ruta_credenciales = BASE_DIR / cred_path
     if not ruta_credenciales.is_file():
         raise FileNotFoundError("No se encontró el archivo de credenciales de Firebase")
 
