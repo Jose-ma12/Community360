@@ -667,7 +667,7 @@
     buscar: $('fBuscar'), canal: $('fCanal'), tema: $('fTema'), tipo: $('fTipo'),
     sentimiento: $('fSentimiento'), filas: $('fFilas')
   };
-  const inter = { pagina: 0, total: 0, filas: [], metricas: null, peticion: 0, cargada: false };
+  const inter = { pagina: 0, total: 0, filas: [], peticion: 0, cargada: false, enCurso: false };
   const cacheInteracciones = new Map();
   const avisoNuevas = $('avisoNuevas');
 
@@ -730,6 +730,7 @@
   async function cargarInteracciones() {
     const f = leerFiltrosInter();
     const peticion = ++inter.peticion;  // descarta respuestas viejas si los filtros cambian a media consulta
+    inter.enCurso = true;
     mostrarAvisoNuevas(false);
     setBusy('wrapInteracciones', true);
     try {
@@ -760,43 +761,40 @@
       filaVacia('tablaInteracciones', 9, 'No se pudieron cargar las interacciones. Intenta de nuevo.');
       renderPager('pagInter', inter, f.limite);
     } finally {
-      if (peticion === inter.peticion) setBusy('wrapInteracciones', false);
+      if (peticion === inter.peticion) {
+        inter.enCurso = false;
+        setBusy('wrapInteracciones', false);
+      }
     }
   }
+  // Varios eventos seguidos del WebSocket se juntan en una sola consulta.
   const cargarInteraccionesEnVivo = debounce(cargarInteracciones, 500);
 
-  // Las métricas del WebSocket ya traen las 10 interacciones más recientes: si la vista coincide
-  // (sin filtros, primera página, 10 filas) se pintan sin volver a consultar la API.
-  function refrescarInteracciones() {
-    const f = leerFiltrosInter();
-    if (tablaEnVivo(f) && f.limite === 10 && inter.metricas) {
-      inter.peticion += 1;
-      setBusy('wrapInteracciones', false);
-      mostrarAvisoNuevas(false);
-      inter.total = Number(inter.metricas.total_interacciones) || 0;
-      pintarInteracciones((inter.metricas.ultimas_interacciones || []).slice(0, 10), false);
-      return;
-    }
-    cargarInteracciones();
-  }
-
+  // La tabla y el contador "Mostrando X–Y de Z" siempre salen de GET /api/interacciones,
+  // así el total y los botones Anterior/Siguiente coinciden con lo que hay en Firestore.
   function actualizarTablaDesdeMetricas(metricas, nuevo) {
-    inter.metricas = metricas;
     if (nuevo) cacheInteracciones.clear();
-    const f = leerFiltrosInter();
-    if (!tablaEnVivo(f)) {
+    if (!tablaEnVivo(leerFiltrosInter())) {
       // Con filtros activos no se mueve la tabla mientras se lee: solo se avisa.
       if (nuevo) mostrarAvisoNuevas(true);
       return;
     }
-    if (f.limite === 10) refrescarInteracciones();
-    else if (nuevo || !inter.cargada) cargarInteraccionesEnVivo();
+    if (nuevo) cargarInteraccionesEnVivo();
+    else if (!inter.cargada && !inter.enCurso) cargarInteracciones();
   }
 
   function irAPrimeraPagina() {
     inter.pagina = 0;
-    refrescarInteracciones();
+    cargarInteracciones();
   }
+
+  // Al entrar a la pantalla Interacciones sin filtros se vuelve a pedir la primera página
+  // (limit=10&offset=0 por defecto) para que el contador muestre el total real del momento.
+  window.addEventListener('hashchange', () => {
+    if (screenForHash(window.location.hash).el.id === 'tabla-recientes' && tablaEnVivo(leerFiltrosInter())) {
+      cargarInteracciones();
+    }
+  });
 
   filtrosInter.buscar?.addEventListener('input', debounce(irAPrimeraPagina, 300));
   ['canal', 'tema', 'tipo', 'sentimiento', 'filas'].forEach((k) => filtrosInter[k]?.addEventListener('change', irAPrimeraPagina));
@@ -807,9 +805,9 @@
     irAPrimeraPagina();
     filtrosInter.buscar?.focus();
   });
-  $('pagInterAnterior')?.addEventListener('click', () => { inter.pagina = Math.max(0, inter.pagina - 1); refrescarInteracciones(); });
-  $('pagInterSiguiente')?.addEventListener('click', () => { inter.pagina += 1; refrescarInteracciones(); });
-  $('btnRefrescar')?.addEventListener('click', () => { cacheInteracciones.clear(); refrescarInteracciones(); });
+  $('pagInterAnterior')?.addEventListener('click', () => { inter.pagina = Math.max(0, inter.pagina - 1); cargarInteracciones(); });
+  $('pagInterSiguiente')?.addEventListener('click', () => { inter.pagina += 1; cargarInteracciones(); });
+  $('btnRefrescar')?.addEventListener('click', () => { cacheInteracciones.clear(); cargarInteracciones(); });
 
   // Detalle en un <dialog> nativo: atrapa el foco, cierra con Esc y lo devuelve a la fila al cerrar.
   const dialogo = $('detalleDialog');
@@ -1148,9 +1146,7 @@
     syncThemeToggle();
     refreshChartThemes();
     connectWs();
-    await Promise.allSettled([verifySession(), loadHistoricos(), cargarPadron()]);
-    // Si ni el WebSocket ni el histórico trajeron métricas, la tabla se llena directo desde la API.
-    if (!inter.metricas && !inter.cargada) cargarInteracciones();
+    await Promise.allSettled([verifySession(), loadHistoricos(), cargarPadron(), cargarInteracciones()]);
   }
 
   init();
