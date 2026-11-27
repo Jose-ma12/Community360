@@ -63,7 +63,7 @@
     errorBox.className = 'error';
     errorBox.textContent = '';
     const username = usernameInput.value.trim();
-    const password = passwordInput.value;
+    const password = passwordInput.value.trim();
     if (!username || !password) {
       errorBox.textContent = 'Usuario y contraseña son obligatorios.';
       errorBox.classList.add('show');

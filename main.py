@@ -736,6 +736,7 @@ def login(req: LoginRequest, request: Request, response: Response):
     _verificar_bloqueo_login(clave)
     # Se puede entrar con el username o con el correo (el correo se guarda en minúsculas).
     identificador = req.username.strip()
+    clave_ingresada = req.password.strip()
     res = ejecutar_d1(
         f"SELECT {', '.join(COLUMNAS_LOGIN_USUARIO)} FROM usuarios_sistema "
         "WHERE username = ? OR (correo IS NOT NULL AND correo = ?) LIMIT 1",
@@ -745,7 +746,7 @@ def login(req: LoginRequest, request: Request, response: Response):
     user = rows[0] if rows else None
     password_hash = ((user or {}).get("password_hash") or "").encode("utf-8")
     try:
-        valida = bool(user) and bcrypt.checkpw(req.password.encode("utf-8"), password_hash)
+        valida = bool(user) and bcrypt.checkpw(clave_ingresada.encode("utf-8"), password_hash)
     except ValueError:
         valida = False
     # Mismo mensaje para usuario inexistente, contraseña incorrecta o usuario inactivo:
