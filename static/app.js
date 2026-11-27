@@ -19,7 +19,15 @@
   const wsStatus = $('wsStatus');
   const wsLog = $('wsLog');
   const logoutBtn = $('logoutBtn');
-  setText('userInfo', user.nombre_completo || 'Panel de la comunidad');
+
+  // "Nombre Apellido · Rol" en la marca de la barra superior.
+  function etiquetaUsuario(u) {
+    const nombre = u?.nombre_completo || u?.username || '';
+    const rol = u?.rol ? String(u.rol).replace(/_/g, ' ') : '';
+    const rolTexto = rol ? rol.charAt(0).toUpperCase() + rol.slice(1) : '';
+    return [nombre, rolTexto].filter(Boolean).join(' · ') || 'Panel de la comunidad';
+  }
+  setText('userInfo', etiquetaUsuario(user));
 
   const charts = {};
   let ws = null;
@@ -163,7 +171,12 @@
   async function verifySession() {
     try {
       const resp = await apiFetch('/api/auth/verify');
-      if (!resp.ok) console.warn(`Verificación de sesión: HTTP ${resp.status}`);
+      if (!resp.ok) {
+        console.warn(`Verificación de sesión: HTTP ${resp.status}`);
+        return;
+      }
+      const data = await resp.json().catch(() => ({}));
+      if (data.usuario) setText('userInfo', etiquetaUsuario(data.usuario));
     } catch (err) {
       console.error('No se pudo verificar la sesión', err);
     }
@@ -180,10 +193,24 @@
     });
   }
 
+  const wsPill = $('wsPill');
   function setWsStatus(connected, text) {
     if (wsDot) wsDot.className = `dot ${connected ? 'ok' : 'bad'}`;
     if (wsStatus) wsStatus.textContent = text;
+    if (wsPill) {
+      wsPill.setAttribute('aria-disabled', String(connected));
+      wsPill.title = connected ? 'Conectado en vivo' : 'Sin conexión en vivo: haz clic para reconectar ahora';
+    }
   }
+
+  // Sin conexión, un clic en la píldora cancela la espera y reconecta de inmediato.
+  wsPill?.addEventListener('click', () => {
+    if (manualLogout) return;
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+    if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+    wsIntentos = 0;
+    connectWs();
+  });
 
   // Los datos llegan con claves técnicas (arte_comisiones, rsvp_evento...); solo se traducen al mostrarlos.
   const ETIQUETAS = {
@@ -290,17 +317,35 @@
     return n.toFixed(4).replace(/\.?0+$/, '');
   }
 
+  // Tras la primera carga, un KPI que cambia destella 600 ms (.is-updated) para que se note el cambio en vivo.
+  let kpisIniciados = false;
+  function setKpi(id, valor) {
+    const el = $(id);
+    if (!el || el.textContent === valor) return;
+    el.textContent = valor;
+    if (!kpisIniciados) return;
+    el.classList.remove('is-updated');
+    void el.offsetWidth;  // reinicia la animación si llegan dos cambios seguidos
+    el.classList.add('is-updated');
+    clearTimeout(el._destello);
+    el._destello = setTimeout(() => el.classList.remove('is-updated'), 600);
+  }
+
   function updateKpis(metricas) {
-    setText('kpiTotal', fmtNum(metricas.total_interacciones));
-    setText('kpiSentimiento', fmtNum(metricas.sentimiento_promedio));
-    setText('kpiReacciones', fmtNum(metricas.reacciones_promedio));
-    setText('kpiLongitud', fmtNum(metricas.longitud_media_texto));
+    setKpi('kpiTotal', fmtNum(metricas.total_interacciones));
+    setKpi('kpiSentimiento', fmtNum(metricas.sentimiento_promedio));
+    setKpi('kpiReacciones', fmtNum(metricas.reacciones_promedio));
+    setKpi('kpiLongitud', fmtNum(metricas.longitud_media_texto));
+    kpisIniciados = true;
     setText('ultimaActualizacion', `Última actualización: ${fmtFechaHora(metricas.ultima_actualizacion)}`);
   }
 
   function ensureChart(id, config) {
     const ctx = $(id);
     if (!ctx) return null;
+    // Con total 0 se muestra el estado vacío del contenedor en lugar de ejes sin barras.
+    const total = (config.data?.datasets || []).reduce((s, ds) => s + (ds.data || []).reduce((a, v) => a + (Number(v) || 0), 0), 0);
+    ctx.parentElement?.classList.toggle('is-empty', total === 0);
     if (typeof Chart === 'undefined') {
       console.error('Chart.js no está disponible; no se pueden dibujar las gráficas.');
       return null;
@@ -425,6 +470,7 @@
     const bloques = ['00-04', '04-08', '08-12', '12-16', '16-20', '20-24'];
     let max = 0;
     dias.forEach(d => bloques.forEach(b => { max = Math.max(max, Number(heatmap?.[d]?.[b] || 0)); }));
+    const nombresDia = { Lun: 'Lunes', Mar: 'Martes', 'Mié': 'Miércoles', Jue: 'Jueves', Vie: 'Viernes', 'Sáb': 'Sábado', Dom: 'Domingo' };
     let html = '<table><thead><tr><th>Día</th>' + bloques.map(b => `<th>${b}</th>`).join('') + '</tr></thead><tbody>';
     dias.forEach(d => {
       html += `<tr><td class="day">${d}</td>`;
@@ -433,12 +479,20 @@
         const ratio = max ? v / max : 0;
         const bg = heatColor(ratio);
         const color = ratio > 0.55 ? 'var(--bg)' : 'var(--texto)';
-        html += `<td class="cell" style="background:${bg};color:${color}">${v}</td>`;
+        const ayuda = `${nombresDia[d]}, ${b.replace('-', ' a ')} h (UTC): ${fmtEntero(v)} ${v === 1 ? 'interacción' : 'interacciones'}`;
+        html += `<td class="cell" style="background:${bg};color:${color}" title="${ayuda}">${v}</td>`;
       });
       html += '</tr>';
     });
     html += '</tbody></table>';
     container.innerHTML = html;
+
+    // Escala de referencia: de 0 al máximo actual, con los mismos tonos de las celdas.
+    const leyenda = $('heatmapLegend');
+    if (leyenda) {
+      const pasos = [0, 0.25, 0.5, 0.75, 1];
+      leyenda.innerHTML = `<span>0</span>${pasos.map(p => `<span class="swatch" style="background:${heatColor(p)}" title="≈ ${fmtEntero(Math.round(p * max))}"></span>`).join('')}<span>${fmtEntero(max)} interacciones</span>`;
+    }
   }
 
   function decorateSentiment() {
@@ -501,7 +555,12 @@
         return;
       }
       if (msg.type === 'pong') return;
-      if (msg.type === 'conexion_inicial') setWsStatus(true, 'En vivo');
+      if (msg.type === 'conexion_inicial') {
+        setWsStatus(true, 'En vivo');
+        // Mientras no hubo conexión pudieron cambiar datos sin aviso: se descartan las páginas guardadas.
+        cacheInteracciones.clear();
+        cachePaginasInter.clear();
+      }
       if (msg.error) {
         console.warn(msg.error);
         logWsEvent({ type: 'error_metricas', evento: 'error_metricas', timestamp_utc: new Date().toISOString(), error: msg.error });
@@ -661,6 +720,45 @@
     return resp.json();
   }
 
+  // Páginas ya pedidas, por ruta + params.toString(): volver a una página o a un filtro anterior
+  // no repite la consulta. Las de interacciones se vacían con cada alta, edición o borrado.
+  const cachePaginasInter = new Map();
+  const cachePaginasPadron = new Map();
+  const cachePaginasCuar = new Map();
+  function getJsonCache(ruta, cache) {
+    if (!cache.has(ruta)) {
+      const promesa = getJson(ruta);
+      cache.set(ruta, promesa);
+      promesa.catch(() => cache.delete(ruta));
+    }
+    return cache.get(ruta);
+  }
+
+  // Orden por columna (estado.orden = { campo, dir }). Los vacíos van siempre al final.
+  function ordenar(lista, orden) {
+    if (!orden?.campo) return lista;
+    const signo = orden.dir === 'desc' ? -1 : 1;
+    return [...lista].sort((a, b) => {
+      const va = a?.[orden.campo];
+      const vb = b?.[orden.campo];
+      const vacioA = va == null || va === '';
+      const vacioB = vb == null || vb === '';
+      if (vacioA || vacioB) return vacioA === vacioB ? 0 : vacioA ? 1 : -1;
+      const cmp = typeof va === 'number' && typeof vb === 'number'
+        ? va - vb
+        : String(va).localeCompare(String(vb), 'es', { numeric: true, sensitivity: 'base' });
+      return cmp * signo;
+    });
+  }
+
+  // "Limpiar (2)" cuando hay filtros activos.
+  function contadorLimpiar(id, activos) {
+    const btn = $(id);
+    if (!btn) return;
+    btn.textContent = activos ? `Limpiar (${activos})` : 'Limpiar';
+    btn.setAttribute('aria-label', activos ? `Limpiar ${activos} ${activos === 1 ? 'filtro activo' : 'filtros activos'}` : 'Limpiar filtros');
+  }
+
   // Trae todos los registros de un endpoint paginado (limit/offset). Se guarda la promesa en caché
   // por combinación de filtros, así teclear en el buscador no repite consultas al servidor.
   function traerTodas(ruta, params, clave, tamLote, cache) {
@@ -729,7 +827,7 @@
     buscar: $('fBuscar'), canal: $('fCanal'), tema: $('fTema'), tipo: $('fTipo'),
     sentimiento: $('fSentimiento'), filas: $('fFilas')
   };
-  const inter = { pagina: 0, total: 0, filas: [], peticion: 0, cargada: false, enCurso: false };
+  const inter = { pagina: 0, total: 0, filas: [], peticion: 0, cargada: false, enCurso: false, orden: { campo: '', dir: '' } };
   const cacheInteracciones = new Map();
   const avisoNuevas = $('avisoNuevas');
 
@@ -743,12 +841,15 @@
       limite: Number(filtrosInter.filas?.value) || 10
     };
   }
-  function hayFiltrosInter(f) {
-    return Boolean(f.q || f.canal || f.tema || f.tipo || f.sentimiento);
+  function filtrosActivosInter(f) {
+    return [f.q, f.canal, f.tema, f.tipo, f.sentimiento].filter(Boolean).length;
   }
-  // Sin filtros y en la primera página la tabla se actualiza sola con cada evento del WebSocket.
+  function hayFiltrosInter(f) {
+    return filtrosActivosInter(f) > 0;
+  }
+  // Sin filtros, sin orden propio y en la primera página la tabla se actualiza sola con cada evento del WebSocket.
   function tablaEnVivo(f) {
-    return !hayFiltrosInter(f) && inter.pagina === 0;
+    return !hayFiltrosInter(f) && !inter.orden.campo && inter.pagina === 0;
   }
 
   function mostrarAvisoNuevas(visible) {
@@ -787,6 +888,7 @@
     renderPager('pagInter', inter, leerFiltrosInter().limite);
     const btnCsv = $('btnExportarCsv');
     if (btnCsv) btnCsv.disabled = !inter.filas.length;
+    setText('btnExportarCsvTexto', inter.filas.length ? `Exportar CSV (${inter.filas.length})` : 'Exportar CSV');
   }
 
   async function cargarInteracciones() {
@@ -794,6 +896,7 @@
     const peticion = ++inter.peticion;  // descarta respuestas viejas si los filtros cambian a media consulta
     inter.enCurso = true;
     mostrarAvisoNuevas(false);
+    contadorLimpiar('btnLimpiarFiltros', filtrosActivosInter(f));
     setBusy('wrapInteracciones', true);
     try {
       const params = new URLSearchParams();
@@ -801,15 +904,18 @@
       let pagina = inter.pagina;
       let filas;
       let total;
-      if (f.q || f.sentimiento) {
-        const todas = (await traerTodas('/api/interacciones', params, 'interacciones', 500, cacheInteracciones))
-          .filter(i => coincideInteraccion(i, f));
+      // La API no busca texto, no filtra sentimiento ni ordena por columna: en esos casos se usa la lista completa.
+      if (f.q || f.sentimiento || inter.orden.campo) {
+        const todas = ordenar(
+          (await traerTodas('/api/interacciones', params, 'interacciones', 500, cacheInteracciones)).filter(i => coincideInteraccion(i, f)),
+          inter.orden
+        );
         ({ pagina, filas } = paginar(todas, pagina, f.limite));
         total = todas.length;
       } else {
         params.set('limit', f.limite);
         params.set('offset', pagina * f.limite);
-        const data = await getJson(`/api/interacciones?${params}`);
+        const data = await getJsonCache(`/api/interacciones?${params}`, cachePaginasInter);
         total = Number(data.total) || 0;
         filas = data.interacciones || [];
       }
@@ -835,7 +941,10 @@
   // La tabla y el contador "Mostrando X–Y de Z" siempre salen de GET /api/interacciones,
   // así el total y los botones Anterior/Siguiente coinciden con lo que hay en Firestore.
   function actualizarTablaDesdeMetricas(metricas, nuevo) {
-    if (nuevo) cacheInteracciones.clear();
+    if (nuevo) {
+      cacheInteracciones.clear();
+      cachePaginasInter.clear();
+    }
     if (!tablaEnVivo(leerFiltrosInter())) {
       // Con filtros activos no se mueve la tabla mientras se lee: solo se avisa.
       if (nuevo) mostrarAvisoNuevas(true);
@@ -850,13 +959,15 @@
     cargarInteracciones();
   }
 
-  // Al entrar a la pantalla Interacciones sin filtros se vuelve a pedir la primera página
-  // (limit=10&offset=0 por defecto) para que el contador muestre el total real del momento.
-  window.addEventListener('hashchange', () => {
-    if (screenForHash(window.location.hash).el.id === 'tabla-recientes' && tablaEnVivo(leerFiltrosInter())) {
-      cargarInteracciones();
-    }
-  });
+  // Al entrar a Interacciones sin filtros se vuelve a pedir la primera página para que el contador
+  // muestre el total real (si nada cambió, sale de la caché de páginas sin ir al servidor).
+  // El explorador de Histórico se carga hasta que se abre esa pantalla.
+  function alCambiarPantalla() {
+    const id = screenForHash(window.location.hash).el.id;
+    if (id === 'tabla-recientes' && tablaEnVivo(leerFiltrosInter())) cargarInteracciones();
+    if (id === 'seccion-historicos') cargarExploradorVisible();
+  }
+  window.addEventListener('hashchange', alCambiarPantalla);
 
   filtrosInter.buscar?.addEventListener('input', debounce(irAPrimeraPagina, 300));
   ['canal', 'tema', 'tipo', 'sentimiento', 'filas'].forEach((k) => filtrosInter[k]?.addEventListener('change', irAPrimeraPagina));
@@ -869,7 +980,11 @@
   });
   $('pagInterAnterior')?.addEventListener('click', () => { inter.pagina = Math.max(0, inter.pagina - 1); cargarInteracciones(); });
   $('pagInterSiguiente')?.addEventListener('click', () => { inter.pagina += 1; cargarInteracciones(); });
-  $('btnRefrescar')?.addEventListener('click', () => { cacheInteracciones.clear(); cargarInteracciones(); });
+  $('btnRefrescar')?.addEventListener('click', () => {
+    cacheInteracciones.clear();
+    cachePaginasInter.clear();
+    cargarInteracciones();
+  });
 
   // Detalle en un <dialog> nativo: atrapa el foco, cierra con Esc y lo devuelve a la fila al cerrar.
   const dialogo = $('detalleDialog');
@@ -941,6 +1056,27 @@
     }
   }
 
+  // Anterior/Siguiente recorren las filas que se veían al abrir el detalle (una copia: si la tabla
+  // se actualiza en vivo mientras el modal está abierto, la navegación no salta de lugar).
+  let detalleLista = [];
+  let detalleIdx = -1;
+  function abrirDetalleEn(idx, lista = detalleLista) {
+    if (idx < 0 || idx >= lista.length) return;
+    detalleLista = lista;
+    detalleIdx = idx;
+    const anterior = $('detalleAnterior');
+    const siguiente = $('detalleSiguiente');
+    if (anterior) anterior.disabled = idx === 0;
+    if (siguiente) siguiente.disabled = idx === lista.length - 1;
+    abrirDetalle(lista[idx]);
+  }
+  $('detalleAnterior')?.addEventListener('click', () => abrirDetalleEn(detalleIdx - 1));
+  $('detalleSiguiente')?.addEventListener('click', () => abrirDetalleEn(detalleIdx + 1));
+  dialogo?.addEventListener('keydown', (ev) => {
+    if (ev.key === 'ArrowLeft') { ev.preventDefault(); abrirDetalleEn(detalleIdx - 1); }
+    if (ev.key === 'ArrowRight') { ev.preventDefault(); abrirDetalleEn(detalleIdx + 1); }
+  });
+
   function cerrarDetalle() {
     if (!dialogo) return;
     if (typeof dialogo.close === 'function') dialogo.close();
@@ -954,14 +1090,14 @@
   const tbodyInter = $('tablaInteracciones');
   tbodyInter?.addEventListener('click', (ev) => {
     const tr = ev.target.closest('tr[data-idx]');
-    if (tr) abrirDetalle(inter.filas[Number(tr.dataset.idx)]);
+    if (tr) abrirDetalleEn(Number(tr.dataset.idx), [...inter.filas]);
   });
   tbodyInter?.addEventListener('keydown', (ev) => {
     if (ev.key !== 'Enter' && ev.key !== ' ') return;
     const tr = ev.target.closest('tr[data-idx]');
     if (!tr) return;
     ev.preventDefault();
-    abrirDetalle(inter.filas[Number(tr.dataset.idx)]);
+    abrirDetalleEn(Number(tr.dataset.idx), [...inter.filas]);
   });
 
   // CSV de las filas visibles. Los textos que empiezan con = + - @ se prefijan con ' para que
@@ -1005,8 +1141,8 @@
   $('btnExportarCsv')?.addEventListener('click', exportarCsv);
 
   // ── Explorador histórico (D1): padrón y cuarentena ──────────────────────
-  const filtrosPadron = { buscar: $('pBuscar'), plataforma: $('pPlataforma'), artista: $('pArtista'), filas: $('pFilas') };
-  const padron = { pagina: 0, total: 0, filas: [], peticion: 0, cargada: false };
+  const filtrosPadron = { buscar: $('pBuscar'), plataforma: $('pPlataforma'), artista: $('pArtista'), estatus: $('pEstatus'), filas: $('pFilas') };
+  const padron = { pagina: 0, total: 0, filas: [], peticion: 0, cargada: false, orden: { campo: '', dir: '' } };
   const cachePadron = new Map();
 
   function leerFiltrosPadron() {
@@ -1014,8 +1150,18 @@
       q: (filtrosPadron.buscar?.value || '').trim(),
       plataforma: filtrosPadron.plataforma?.value || '',
       artista: filtrosPadron.artista?.value || '',
+      estatus: filtrosPadron.estatus?.value || '',
       limite: Number(filtrosPadron.filas?.value) || 25
     };
+  }
+  function filtrosActivosPadron(f) {
+    return [f.q, f.plataforma, f.artista, f.estatus].filter(Boolean).length;
+  }
+
+  const ESTATUS_CONOCIDOS = new Set(['activo', 'en_riesgo', 'inactivo']);
+  function insigniaEstatus(estatus) {
+    const clave = ESTATUS_CONOCIDOS.has(estatus) ? estatus : 'sin_dato';
+    return `<span class="status-badge" data-estatus="${clave}">${escapeHtml(clave === 'sin_dato' ? 'Sin dato' : etiqueta(estatus))}</span>`;
   }
 
   // La API ya omite la ubicación de quien no dio consentimiento; aquí se dice explícitamente.
@@ -1038,7 +1184,7 @@
             <td>${escapeHtml(etiqueta(u.plataforma_principal))}</td>
             <td>${escapeHtml(etiqueta(u.interes_principal))}</td>
             <td>${Number(u.es_artista) === 1 ? 'Sí' : 'No'}</td>
-            <td>${escapeHtml(etiqueta(u.estatus))}</td>
+            <td>${insigniaEstatus(u.estatus)}</td>
             <td class="mono">${u.mensajes_30d == null ? '—' : fmtNum(u.mensajes_30d)}</td>
             <td class="mono">${escapeHtml(fmtFechaHora(u.ultima_actividad))}</td>
             <td>${ubicacionMiembro(u)}</td>
@@ -1051,35 +1197,41 @@
   async function cargarPadron() {
     const f = leerFiltrosPadron();
     const peticion = ++padron.peticion;
+    padron.cargada = true;  // evita una segunda carga si se cambia de pantalla mientras responde D1
+    contadorLimpiar('pLimpiar', filtrosActivosPadron(f));
     setBusy('wrapPadron', true);
     try {
       const params = new URLSearchParams();
       if (f.plataforma) params.set('plataforma', f.plataforma);
       if (f.artista !== '') params.set('es_artista', f.artista);
+      if (f.estatus) params.set('estatus', f.estatus);
       let pagina = padron.pagina;
       let filas;
       let total;
-      if (f.q) {
-        // El endpoint no busca por texto: se recorre el padrón filtrado (lotes de 200) y se busca aquí.
+      if (f.q || padron.orden.campo) {
+        // El endpoint no busca por texto ni ordena por columna: se recorre el padrón filtrado (lotes de 200).
         const q = f.q.toLowerCase();
-        const todos = (await traerTodas('/api/historico/usuarios', params, 'usuarios', 200, cachePadron))
-          .filter(u => [u.id_usuario, u.alias].some(v => String(v || '').toLowerCase().includes(q)));
+        const todos = ordenar(
+          (await traerTodas('/api/historico/usuarios', params, 'usuarios', 200, cachePadron))
+            .filter(u => !q || [u.id_usuario, u.alias].some(v => String(v || '').toLowerCase().includes(q))),
+          padron.orden
+        );
         ({ pagina, filas } = paginar(todos, pagina, f.limite));
         total = todos.length;
       } else {
         params.set('limit', f.limite);
         params.set('offset', pagina * f.limite);
-        const data = await getJson(`/api/historico/usuarios?${params}`);
+        const data = await getJsonCache(`/api/historico/usuarios?${params}`, cachePaginasPadron);
         total = Number(data.total) || 0;
         filas = data.usuarios || [];
       }
       if (peticion !== padron.peticion) return;
-      Object.assign(padron, { pagina, total, cargada: true });
-      pintarPadron(filas, Boolean(f.q || f.plataforma || f.artista));
+      Object.assign(padron, { pagina, total });
+      pintarPadron(filas, filtrosActivosPadron(f) > 0);
     } catch (err) {
       if (peticion !== padron.peticion) return;
       console.error('Error al cargar el padrón', err);
-      Object.assign(padron, { filas: [], total: 0 });
+      Object.assign(padron, { filas: [], total: 0, cargada: false });
       filaVacia('tablaPadron', 9, 'No se pudo cargar el padrón. Intenta de nuevo.');
       renderPager('pagPadron', padron, f.limite);
     } finally {
@@ -1092,11 +1244,12 @@
     cargarPadron();
   }
   filtrosPadron.buscar?.addEventListener('input', debounce(padronPrimeraPagina, 300));
-  ['plataforma', 'artista', 'filas'].forEach((k) => filtrosPadron[k]?.addEventListener('change', padronPrimeraPagina));
+  ['plataforma', 'artista', 'estatus', 'filas'].forEach((k) => filtrosPadron[k]?.addEventListener('change', padronPrimeraPagina));
   $('pLimpiar')?.addEventListener('click', () => {
     if (filtrosPadron.buscar) filtrosPadron.buscar.value = '';
     if (filtrosPadron.plataforma) filtrosPadron.plataforma.value = '';
     if (filtrosPadron.artista) filtrosPadron.artista.value = '';
+    if (filtrosPadron.estatus) filtrosPadron.estatus.value = '';
     if (filtrosPadron.filas) filtrosPadron.filas.value = '25';
     padronPrimeraPagina();
     filtrosPadron.buscar?.focus();
@@ -1106,7 +1259,8 @@
 
   const MOTIVOS_RECHAZO = { FK_USUARIO_INEXISTENTE: 'El usuario de origen no existe en el padrón' };
   const filtrosCuar = { motivo: $('cMotivo'), filas: $('cFilas') };
-  const cuar = { pagina: 0, total: 0, filas: [], peticion: 0, cargada: false };
+  const cuar = { pagina: 0, total: 0, filas: [], peticion: 0, cargada: false, orden: { campo: '', dir: '' } };
+  const cacheCuarentena = new Map();
 
   function etiquetaMotivo(m) {
     const codigo = escapeHtml(m || 'SIN_MOTIVO');
@@ -1143,18 +1297,32 @@
     const motivo = filtrosCuar.motivo?.value || '';
     const limite = Number(filtrosCuar.filas?.value) || 25;
     const peticion = ++cuar.peticion;
+    cuar.cargada = true;
+    contadorLimpiar('cLimpiar', motivo ? 1 : 0);
     setBusy('wrapCuarentena', true);
     try {
+      const filtro = new URLSearchParams();
+      if (motivo) filtro.set('motivo', motivo);
       const params = new URLSearchParams({ limit: limite, offset: cuar.pagina * limite });
       if (motivo) params.set('motivo', motivo);
-      const data = await getJson(`/api/historico/cuarentena?${params}`);
+      let data = await getJsonCache(`/api/historico/cuarentena?${params}`, cachePaginasCuar);
+      let pagina = cuar.pagina;
+      let total = Number(data.total) || 0;
+      if (cuar.orden.campo) {
+        // Para ordenar por columna se recorre la cuarentena completa (lotes de 200) y se pagina aquí.
+        const todos = ordenar(await traerTodas('/api/historico/cuarentena', filtro, 'registros', 200, cacheCuarentena), cuar.orden);
+        let filas;
+        ({ pagina, filas } = paginar(todos, pagina, limite));
+        data = { ...data, registros: filas };
+        total = todos.length;
+      }
       if (peticion !== cuar.peticion) return;
-      Object.assign(cuar, { total: Number(data.total) || 0, cargada: true });
+      Object.assign(cuar, { pagina, total });
       pintarCuarentena(data, Boolean(motivo));
     } catch (err) {
       if (peticion !== cuar.peticion) return;
       console.error('Error al cargar la cuarentena', err);
-      Object.assign(cuar, { filas: [], total: 0 });
+      Object.assign(cuar, { filas: [], total: 0, cargada: false });
       filaVacia('tablaCuarentena', 7, 'No se pudo cargar la cuarentena. Intenta de nuevo.');
       renderPager('pagCuar', cuar, limite);
     } finally {
@@ -1204,11 +1372,70 @@
     });
   });
 
+  // Carga diferida: el explorador solo consulta D1 cuando se abre la pantalla Histórico.
+  function cargarExploradorVisible() {
+    const activa = tabsExplorador.find(t => t.getAttribute('aria-selected') === 'true');
+    if (activa?.id === 'tabCuarentena') {
+      if (!cuar.cargada) cargarCuarentena();
+    } else if (!padron.cargada) {
+      cargarPadron();
+    }
+  }
+
+  // ── Orden por columna (clic en los encabezados con .th-sort): asc → desc → orden original ──
+  const tablasOrdenables = {
+    inter: { estado: inter, recargar: () => { inter.pagina = 0; cargarInteracciones(); } },
+    padron: { estado: padron, recargar: padronPrimeraPagina },
+    cuar: { estado: cuar, recargar: cuarPrimeraPagina }
+  };
+  function marcarOrden(tabla) {
+    const { orden } = tablasOrdenables[tabla].estado;
+    document.querySelectorAll(`.th-sort[data-tabla="${tabla}"]`).forEach((b) => {
+      const activo = orden.campo === b.dataset.campo;
+      b.closest('th')?.setAttribute('aria-sort', activo ? (orden.dir === 'asc' ? 'ascending' : 'descending') : 'none');
+    });
+  }
+  document.querySelectorAll('.th-sort').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const tabla = tablasOrdenables[btn.dataset.tabla];
+      if (!tabla) return;
+      const { campo } = btn.dataset;
+      const orden = tabla.estado.orden;
+      if (orden.campo !== campo) tabla.estado.orden = { campo, dir: 'asc' };
+      else if (orden.dir === 'asc') tabla.estado.orden = { campo, dir: 'desc' };
+      else tabla.estado.orden = { campo: '', dir: '' };
+      marcarOrden(btn.dataset.tabla);
+      tabla.recargar();
+    });
+  });
+
+  // Atajo "/": enfoca el buscador de la pantalla (o pestaña) visible, salvo si ya se está escribiendo.
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key !== '/' || ev.ctrlKey || ev.metaKey || ev.altKey || dialogo?.open) return;
+    const t = ev.target;
+    if (t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))) return;
+    const buscador = [...document.querySelectorAll('.screen:not([hidden]) input[type="search"]')].find(el => el.offsetParent !== null);
+    if (!buscador) return;
+    ev.preventDefault();
+    buscador.focus();
+    buscador.select();
+  });
+
+  // Al volver a la pestaña del navegador se confirma que la sesión siga vigente (como mucho cada 15 s).
+  let ultimaVerificacion = Date.now();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || Date.now() - ultimaVerificacion < 15000) return;
+    ultimaVerificacion = Date.now();
+    verifySession();
+  });
+
   async function init() {
     syncThemeToggle();
     refreshChartThemes();
     connectWs();
-    await Promise.allSettled([verifySession(), loadHistoricos(), cargarPadron(), cargarInteracciones()]);
+    const tareas = [verifySession(), loadHistoricos(), cargarInteracciones()];
+    if (screenForHash(window.location.hash).el.id === 'seccion-historicos') cargarExploradorVisible();
+    await Promise.allSettled(tareas);
   }
 
   init();

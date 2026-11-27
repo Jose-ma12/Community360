@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import json
 import math
 import os
@@ -90,6 +91,9 @@ CABECERAS_SEGURIDAD = {
         "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
     ),
 }
+if COOKIE_SECURE:
+    # Solo cuando se sirve por HTTPS: el navegador recordará usar HTTPS durante un año.
+    CABECERAS_SEGURIDAD["Strict-Transport-Security"] = "max-age=31536000"
 
 security = HTTPBearer(auto_error=False)
 TOKENS_REVOCADOS: set[str] = set()  # caché en memoria; la fuente de verdad es la tabla tokens_revocados de D1
@@ -523,9 +527,29 @@ def decodificar_jwt(token: str) -> dict:
     return payload
 
 
+# Caché breve de sesiones ya validadas contra D1, para no consultar D1 en cada clic de paginación.
+# decodificar_jwt revisa antes la firma, la expiración y TOKENS_REVOCADOS (memoria), así que un
+# logout en este servidor sigue cortando la sesión al instante. Lo que sí puede tardar hasta
+# SESION_CACHE_TTL_S en notarse es desactivar al usuario directamente en D1.
+SESION_CACHE_TTL_S = 15
+_SESIONES_CACHE: dict[tuple[str, str], tuple[float, dict]] = {}
+_sesiones_lock = threading.Lock()
+
+
+def _olvidar_sesion_cache(jti: str, username: str) -> None:
+    with _sesiones_lock:
+        _SESIONES_CACHE.pop((jti, username), None)
+
+
 def validar_sesion(token: str) -> dict:
     """Valida firma, expiración, revocación (memoria + D1) y que el usuario siga activo."""
     payload = decodificar_jwt(token)
+    clave_cache = (payload["jti"], payload["sub"])
+    ahora = time.monotonic()
+    with _sesiones_lock:
+        guardada = _SESIONES_CACHE.get(clave_cache)
+    if guardada and guardada[0] > ahora:
+        return {**guardada[1], "token": token}
     sql = (
         f"SELECT {', '.join(COLUMNAS_PERFIL_USUARIO)}, "
         "EXISTS(SELECT 1 FROM tokens_revocados WHERE jti = ?) AS revocado "
@@ -546,14 +570,19 @@ def validar_sesion(token: str) -> dict:
         TOKENS_REVOCADOS.add(payload["jti"])
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token revocado")
     fila = rows[0]
-    return {
+    sesion = {
         "username": fila["username"],
         "nombre_completo": fila.get("nombre_completo"),
         "rol": fila.get("rol"),
-        "token": token,
         "jti": payload["jti"],
         "exp": payload.get("exp"),
     }
+    with _sesiones_lock:
+        if len(_SESIONES_CACHE) > 500:  # se purgan las vencidas para que la caché no crezca sin límite
+            for clave in [k for k, (expira, _) in _SESIONES_CACHE.items() if expira <= ahora]:
+                del _SESIONES_CACHE[clave]
+        _SESIONES_CACHE[clave_cache] = (ahora + SESION_CACHE_TTL_S, sesion)
+    return {**sesion, "token": token}
 
 
 # Dependencia síncrona: FastAPI la ejecuta en un hilo aparte, así la consulta a D1
@@ -595,9 +624,41 @@ def metricas_vacias() -> dict:
     return calcular_metricas([])
 
 
+# Caché de la colección "interacciones" ya normalizada. Cada POST/PUT/DELETE de la API la vacía,
+# así que esos cambios se ven al instante; solo los cambios hechos fuera de esta API (consola de
+# Firebase, otro proceso) pueden tardar hasta INTERACCIONES_CACHE_TTL_S en aparecer.
+INTERACCIONES_CACHE_TTL_S = 30
+_CACHE_INTERACCIONES: dict[str, Any] = {}
+_cache_interacciones_lock = threading.Lock()
+_cache_interacciones_generacion = 0
+
+
+def invalidar_cache_interacciones() -> None:
+    global _cache_interacciones_generacion
+    with _cache_interacciones_lock:
+        _CACHE_INTERACCIONES.clear()
+        _cache_interacciones_generacion += 1
+
+
+def obtener_interacciones_normalizadas() -> list[dict]:
+    """Lista de interacciones de Firestore (de la caché si sigue vigente). Los dicts se comparten: no mutarlos."""
+    ahora = time.monotonic()
+    with _cache_interacciones_lock:
+        if _CACHE_INTERACCIONES and _CACHE_INTERACCIONES["expira"] > ahora:
+            return list(_CACHE_INTERACCIONES["docs"])
+        generacion = _cache_interacciones_generacion
+    db = get_firestore()
+    docs = [_normalizar_interaccion_doc(d.to_dict() or {}) for d in db.collection("interacciones").stream(**FS)]
+    with _cache_interacciones_lock:
+        # Si hubo una escritura mientras se leía Firestore, esta lectura pudo quedar vieja: no se guarda.
+        if generacion == _cache_interacciones_generacion:
+            _CACHE_INTERACCIONES.update(expira=time.monotonic() + INTERACCIONES_CACHE_TTL_S, docs=docs)
+    return list(docs)
+
+
 def recalcular_metricas_dinamicas(guardar_en_firestore: bool = True) -> dict:
     db = get_firestore()
-    interacciones = [_normalizar_interaccion_doc(d.to_dict() or {}) for d in db.collection("interacciones").stream(**FS)]
+    interacciones = obtener_interacciones_normalizadas()
     metricas = calcular_metricas(interacciones)
     if guardar_en_firestore:
         db.collection("metricas_tiempo_real").document("resumen_global").set(metricas, **FS)
@@ -622,6 +683,19 @@ def _quitar_campos_geo(data: dict) -> None:
         data.pop(k, None)
 
 
+def _invalida_cache_interacciones(fn):
+    """Vacía la caché de interacciones antes y después de una escritura (también si falla)."""
+    @functools.wraps(fn)
+    def envoltura(*args, **kwargs):
+        invalidar_cache_interacciones()
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            invalidar_cache_interacciones()
+    return envoltura
+
+
+@_invalida_cache_interacciones
 def _crear_interaccion_sync(payload: InteraccionBase, usuario: dict) -> dict:
     db = get_firestore()
     doc_ref = db.collection("interacciones").document(payload.id_interaccion)
@@ -645,6 +719,7 @@ def _crear_interaccion_sync(payload: InteraccionBase, usuario: dict) -> dict:
     return data
 
 
+@_invalida_cache_interacciones
 def _actualizar_interaccion_sync(id_interaccion: str, payload: InteraccionUpdate, usuario: dict) -> dict:
     cambios = payload.model_dump(exclude_unset=True)
     if not cambios:
@@ -690,6 +765,7 @@ def _actualizar_interaccion_sync(id_interaccion: str, payload: InteraccionUpdate
     return actualizado
 
 
+@_invalida_cache_interacciones
 def _eliminar_interaccion_sync(id_interaccion: str) -> dict:
     db = get_firestore()
     doc_ref = db.collection("interacciones").document(id_interaccion)
@@ -810,6 +886,7 @@ def logout(request: Request, response: Response, credentials: HTTPAuthorizationC
             return {"ok": True, "mensaje": "La sesión ya estaba cerrada"}
         raise
     TOKENS_REVOCADOS.add(payload["jti"])
+    _olvidar_sesion_cache(payload["jti"], payload["sub"])
     persistida = _revocar_en_d1(payload)
     return {"ok": True, "mensaje": "Sesión cerrada", "revocacion_persistida_en_d1": persistida}
 
@@ -843,8 +920,7 @@ def listar_interacciones(
     offset: int = Query(default=0, ge=0),
     usuario=Depends(obtener_usuario_actual),
 ):
-    db = get_firestore()
-    docs = [_normalizar_interaccion_doc(d.to_dict() or {}) for d in db.collection("interacciones").stream(**FS)]
+    docs = obtener_interacciones_normalizadas()
     filtros = {"canal": canal, "tema": tema, "tipo": tipo, "id_usuario": id_usuario}
     for campo, valor in filtros.items():
         if valor:
@@ -1003,14 +1079,16 @@ def historico_usuarios(
             condiciones.append(f"{columna} = ?")
             params.append(valor)
     where = f" WHERE {' AND '.join(condiciones)}" if condiciones else ""
-    total = ejecutar_d1(
-        f"SELECT COUNT(*) AS total FROM usuarios u LEFT JOIN usuarios_metricas m ON m.id_usuario = u.id_usuario{where}",
-        params,
-    )["results"][0]["total"]
-    filas = ejecutar_d1(
-        f"{SELECT_USUARIO_HISTORICO}{where} ORDER BY u.id_usuario LIMIT ? OFFSET ?",
-        params + [limit, offset],
-    ).get("results", [])
+    # El conteo y la página son independientes: se piden a D1 en paralelo.
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        f_total = pool.submit(
+            ejecutar_d1,
+            f"SELECT COUNT(*) AS total FROM usuarios u LEFT JOIN usuarios_metricas m ON m.id_usuario = u.id_usuario{where}",
+            params,
+        )
+        f_filas = pool.submit(ejecutar_d1, f"{SELECT_USUARIO_HISTORICO}{where} ORDER BY u.id_usuario LIMIT ? OFFSET ?", params + [limit, offset])
+        total = f_total.result()["results"][0]["total"]
+        filas = f_filas.result().get("results", [])
     return {"total": total, "limit": limit, "offset": offset, "usuarios": filas}
 
 
@@ -1035,15 +1113,22 @@ def historico_cuarentena(
     where, params = ("", [])
     if motivo:
         where, params = (" WHERE motivo_rechazo = ?", [motivo])
-    total = ejecutar_d1(f"SELECT COUNT(*) AS total FROM interacciones_cuarentena{where}", params)["results"][0]["total"]
-    por_motivo = ejecutar_d1(
-        "SELECT motivo_rechazo, COUNT(*) AS total FROM interacciones_cuarentena GROUP BY motivo_rechazo ORDER BY total DESC"
-    ).get("results", [])
-    filas = ejecutar_d1(
-        "SELECT id_interaccion, id_usuario_origen, timestamp_origen, canal, tipo, tema, motivo_rechazo "
-        f"FROM interacciones_cuarentena{where} ORDER BY timestamp_origen DESC LIMIT ? OFFSET ?",
-        params + [limit, offset],
-    ).get("results", [])
+    # Conteo, resumen por motivo y página: tres consultas independientes, en paralelo.
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        f_total = pool.submit(ejecutar_d1, f"SELECT COUNT(*) AS total FROM interacciones_cuarentena{where}", params)
+        f_motivos = pool.submit(
+            ejecutar_d1,
+            "SELECT motivo_rechazo, COUNT(*) AS total FROM interacciones_cuarentena GROUP BY motivo_rechazo ORDER BY total DESC",
+        )
+        f_filas = pool.submit(
+            ejecutar_d1,
+            "SELECT id_interaccion, id_usuario_origen, timestamp_origen, canal, tipo, tema, motivo_rechazo "
+            f"FROM interacciones_cuarentena{where} ORDER BY timestamp_origen DESC LIMIT ? OFFSET ?",
+            params + [limit, offset],
+        )
+        total = f_total.result()["results"][0]["total"]
+        por_motivo = f_motivos.result().get("results", [])
+        filas = f_filas.result().get("results", [])
     return {"total": total, "limit": limit, "offset": offset, "por_motivo": por_motivo, "registros": filas}
 
 

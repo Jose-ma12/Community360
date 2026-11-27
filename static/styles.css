@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600&display=swap");
+/* Las fuentes se cargan con <link> en cada HTML (sin @import, que bloquearía el render en cadena). */
 
 /* ── Tokens · Centro de operaciones ─────────────────────────────────────── */
 :root {
@@ -210,6 +210,10 @@ a svg { pointer-events: none; }
 }
 .status-pill .dot.ok { background: var(--salvia); animation: pulso-vivo 1.8s ease-out infinite; }
 .status-pill .dot.bad { background: var(--ocre); }
+/* #wsPill es un <button>: en vivo no hace nada (aria-disabled); sin conexión, un clic reconecta. */
+button.status-pill { background: transparent; font-family: var(--font-sans); cursor: default; }
+button.status-pill[aria-disabled="false"] { cursor: pointer; }
+button.status-pill[aria-disabled="false"]:hover { border-color: var(--acento); color: var(--texto); }
 
 @keyframes pulso-vivo {
   0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--salvia) 55%, transparent); }
@@ -351,6 +355,12 @@ a svg { pointer-events: none; }
 }
 .kpi-cell .subtitle,
 .kpi-mini .subtitle { margin: 0; font-size: 12px; color: var(--texto-3); }
+/* Destello breve cuando un KPI cambia por WebSocket (app.js pone .is-updated durante 600 ms). */
+.kpi-cell .value.is-updated { animation: kpi-destello .6s ease-out; }
+@keyframes kpi-destello {
+  0% { color: var(--acento); text-shadow: 0 0 14px color-mix(in srgb, var(--acento) 45%, transparent); }
+  100% { color: var(--texto); text-shadow: none; }
+}
 
 /* ── Gráficas ───────────────────────────────────────────────────────────── */
 /* Altura fija para que Chart.js (responsive, sin aspect ratio) no crezca sin control. */
@@ -358,6 +368,19 @@ a svg { pointer-events: none; }
 .chart-wrap canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; }
 .screen--tiempo-real .chart-wrap,
 .screen--historico .chart-wrap { height: 340px; }
+/* Gráfica sin datos (total 0): app.js pone .is-empty y se oculta el lienzo vacío. */
+.chart-wrap.is-empty canvas { visibility: hidden; }
+.chart-wrap.is-empty::after {
+  content: "Sin datos para mostrar";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--borde-2);
+  border-radius: 8px;
+  color: var(--texto-3);
+  font-size: 13px;
+}
 
 /* ── Mapa de calor ──────────────────────────────────────────────────────── */
 /* El color de cada celda lo calcula app.js (heatColor) y llega en línea. */
@@ -374,6 +397,18 @@ a svg { pointer-events: none; }
   font-variant-numeric: tabular-nums;
 }
 .heatmap td.day { color: var(--texto-2); font-weight: 500; text-align: left; white-space: nowrap; }
+/* Escala de referencia (#heatmapLegend): mismos colores que heatColor() en app.js. */
+.heatmap-legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 10px;
+  color: var(--texto-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.heatmap-legend .swatch { width: 18px; height: 10px; border-radius: 2px; }
 
 /* ── Pantallas que llenan el alto: Actividad en vivo e Interacciones ────── */
 .screen-grid--pulso > .card,
@@ -508,6 +543,43 @@ table.data td.mono,
   font-variant-numeric: tabular-nums;
 }
 
+/* Encabezados ordenables: el botón ocupa la celda; aria-sort del <th> marca la dirección. */
+.th-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+.th-sort:hover { color: var(--texto); }
+.th-sort::after { content: "↕"; opacity: .35; font-size: 11px; }
+th[aria-sort="ascending"] .th-sort,
+th[aria-sort="descending"] .th-sort { color: var(--acento); }
+th[aria-sort="ascending"] .th-sort::after { content: "↑"; opacity: 1; }
+th[aria-sort="descending"] .th-sort::after { content: "↓"; opacity: 1; }
+
+/* Estatus del padrón (span.status-badge[data-estatus], generado por app.js). */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 8px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.status-badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.status-badge[data-estatus="activo"] { color: var(--salvia); }
+.status-badge[data-estatus="en_riesgo"] { color: var(--ocre); }
+.status-badge[data-estatus="inactivo"] { color: var(--peligro); }
+.status-badge[data-estatus="sin_dato"] { color: var(--texto-3); }
+
 /* Filas que abren el detalle (tr.row-link, generadas por app.js). */
 table.data tbody tr.row-link { cursor: pointer; }
 table.data tbody tr.row-link:focus-visible { outline: 2px solid var(--acento); outline-offset: -2px; }
@@ -552,8 +624,7 @@ table.data tbody tr.row-link:focus-visible { outline: 2px solid var(--acento); o
   color: var(--texto-2);
   font-size: 13px;
   line-height: 1.5;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 /* ── Encabezado de tarjeta con acciones ─────────────────────────────────── */
@@ -788,7 +859,10 @@ table.data tbody tr.row-link:focus-visible { outline: 2px solid var(--acento); o
   padding: 14px 16px 14px 20px;
   border-bottom: 1px solid var(--borde);
 }
+.modal-nav { display: flex; gap: 6px; margin-left: auto; }
 .modal-head h3 {
+  flex: 1 1 auto;
+  min-width: 0;
   margin: 0;
   color: var(--texto);
   font-family: var(--font-display);
@@ -973,7 +1047,8 @@ table.data tbody tr.row-link:focus-visible { outline: 2px solid var(--acento); o
   .card--ciudades .chart-wrap { height: 340px; }
   .table-card { height: auto; }
   .table-card .table-wrap { flex: 0 1 auto; max-height: 60vh; }
-  .banner { white-space: normal; }
+  /* Solo íconos: la pestaña activa lleva además un fondo de acento para distinguirse a simple vista. */
+  .tab-link[aria-current="page"] { background: color-mix(in srgb, var(--acento) 12%, transparent); }
 
   /* Filtros en dos columnas; el buscador ocupa la fila completa. */
   .filters-bar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -988,6 +1063,9 @@ table.data tbody tr.row-link:focus-visible { outline: 2px solid var(--acento); o
   .pager-btns { flex: 1 1 100%; }
   .pager-btns .btn { flex: 1 1 0; }
   .detail-grid { grid-template-columns: minmax(0, 1fr); }
+  .modal-head { flex-wrap: wrap; }
+  .modal-nav { order: 3; flex: 1 1 100%; }
+  .modal-nav .btn { flex: 1 1 0; }
   .screen-head { justify-content: flex-start; margin-bottom: -4px; }
   .toast-stack { right: 16px; bottom: 16px; left: 16px; align-items: stretch; max-width: none; }
 }

@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;family=Space+Grotesk:wght@500;600&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=20261126b">
+  <link rel="stylesheet" href="/static/styles.css?v=20261126c">
   <script src="/static/vendor/chart.umd.min.js"></script>
 </head>
 <body class="dashboard-body">
@@ -23,29 +23,30 @@
     </a>
 
     <nav class="topbar-nav" aria-label="Secciones del dashboard">
-      <a class="tab-link" href="#tiempo-real" data-target="seccion-tiempo-real" aria-label="Tiempo real" aria-current="page">
+      <a class="tab-link" href="#tiempo-real" data-target="seccion-tiempo-real" aria-label="Tiempo real" title="Tiempo real" aria-current="page">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5V12l3 2"></path></svg>
         <span class="tab-text">Tiempo real</span>
       </a>
-      <a class="tab-link" href="#pulso" data-target="zona-pulso" aria-label="Pulso en vivo">
+      <a class="tab-link" href="#pulso" data-target="zona-pulso" aria-label="Pulso en vivo" title="Pulso en vivo">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2.5-6 4 12 2.5-6h5"></path></svg>
         <span class="tab-text">Pulso en vivo</span>
       </a>
-      <a class="tab-link" href="#interacciones" data-target="tabla-recientes" aria-label="Interacciones">
+      <a class="tab-link" href="#interacciones" data-target="tabla-recientes" aria-label="Interacciones" title="Interacciones">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path><circle cx="7" cy="6" r="1"></circle><circle cx="7" cy="12" r="1"></circle><circle cx="7" cy="18" r="1"></circle></svg>
         <span class="tab-text">Interacciones</span>
       </a>
-      <a class="tab-link" href="#historico" data-target="seccion-historicos" aria-label="Histórico">
+      <a class="tab-link" href="#historico" data-target="seccion-historicos" aria-label="Histórico" title="Histórico">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19V11M10 19V5M15 19v-7M20 19V8"></path><path d="M3 21h18"></path></svg>
         <span class="tab-text">Histórico</span>
       </a>
     </nav>
 
     <div class="topbar-actions">
-      <div class="status-pill" title="Estado de la conexión">
+      <!-- Sin conexión, un clic reconecta de inmediato (app.js). -->
+      <button class="status-pill" id="wsPill" type="button" title="Estado de la conexión" aria-disabled="true">
         <span id="wsDot" class="dot"></span>
         <span id="wsStatus">En vivo</span>
-      </div>
+      </button>
       <div class="timestamp" id="ultimaActualizacion">Última actualización: —</div>
       <button id="themeToggleBtn" class="theme-toggle icon-btn" type="button" aria-label="Cambiar tema" title="Cambiar tema">
         <svg class="icon icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"></path></svg>
@@ -108,6 +109,7 @@
             <h3>Actividad por día y horario</h3>
             <p class="muted subtitle">Horario en tiempo universal, en bloques de 4 horas</p>
             <div class="heatmap" id="heatmapContainer"></div>
+            <div class="heatmap-legend" id="heatmapLegend"></div>
           </article>
           <article class="card">
             <h3>Actividad reciente</h3>
@@ -124,7 +126,7 @@
             <h3>Interacciones</h3>
             <button id="btnExportarCsv" class="btn btn-secondary" type="button" disabled title="Descarga las filas que se ven en la tabla">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5"></path><path d="M5 19h14"></path></svg>
-              <span>Exportar CSV</span>
+              <span id="btnExportarCsvTexto">Exportar CSV</span>
             </button>
           </div>
 
@@ -132,7 +134,7 @@
           <div class="filters-bar" role="search" aria-label="Filtrar interacciones">
             <label class="field field--search">
               <span class="field-label">Buscar</span>
-              <input id="fBuscar" type="search" placeholder="Folio (I…), usuario (U…) o texto" autocomplete="off" spellcheck="false">
+              <input id="fBuscar" type="search" aria-keyshortcuts="/" title="Atajo de teclado: /" placeholder="Folio (I…), usuario (U…) o texto" autocomplete="off" spellcheck="false">
             </label>
             <label class="field">
               <span class="field-label">Canal</span>
@@ -201,7 +203,7 @@
               <caption class="sr-only">Interacciones de la comunidad. Selecciona una fila para ver su detalle.</caption>
               <thead>
                 <tr>
-                  <th scope="col">Folio</th><th scope="col">Usuario</th><th scope="col">Fecha y hora</th><th scope="col">Canal</th><th scope="col">Tipo</th><th scope="col">Tema</th><th scope="col">Sentimiento</th><th scope="col">Reacciones</th><th scope="col">Texto</th>
+                  <th scope="col" aria-sort="none"><button class="th-sort" type="button" data-tabla="inter" data-campo="id_interaccion">Folio</button></th><th scope="col" aria-sort="none"><button class="th-sort" type="button" data-tabla="inter" data-campo="id_usuario">Usuario</button></th><th scope="col" aria-sort="none"><button class="th-sort" type="button" data-tabla="inter" data-campo="timestamp">Fecha y hora</button></th><th scope="col">Canal</th><th scope="col">Tipo</th><th scope="col">Tema</th><th scope="col" aria-sort="none"><button class="th-sort" type="button" data-tabla="inter" data-campo="sentimiento">Sentimiento</button></th><th scope="col" aria-sort="none"><button class="th-sort" type="button" data-tabla="inter" data-campo="reacciones_recibidas">Reacciones</button></th><th scope="col">Texto</th>
                 </tr>
               </thead>
               <tbody id="tablaInteracciones">
@@ -228,22 +230,22 @@
         <div class="historico-kpis">
           <article class="kpi-mini">
             <div class="label">Miembros registrados</div>
-            <div class="value" id="hTotalUsuarios">1068</div>
+            <div class="value" id="hTotalUsuarios">—</div>
             <p class="muted subtitle">Total de la comunidad</p>
           </article>
           <article class="kpi-mini">
             <div class="label">Ubicación autorizada</div>
-            <div class="value" id="hConConsent">897</div>
+            <div class="value" id="hConConsent">—</div>
             <p class="muted subtitle">Con permiso para mostrar su ciudad</p>
           </article>
           <article class="kpi-mini">
             <div class="label">Excluidos por privacidad</div>
-            <div class="value" id="hSinConsent">171</div>
+            <div class="value" id="hSinConsent">—</div>
             <p class="muted subtitle">Sin permiso: su ubicación se oculta</p>
           </article>
           <article class="kpi-mini">
             <div class="label">Interacciones en cuarentena</div>
-            <div class="value" id="hCuarentena">793</div>
+            <div class="value" id="hCuarentena">—</div>
             <p class="muted subtitle">Revisadas y apartadas por datos incompletos</p>
           </article>
         </div>
@@ -275,7 +277,7 @@
               <div class="filters-bar" role="search" aria-label="Filtrar padrón de miembros">
                 <label class="field field--search">
                   <span class="field-label">Buscar</span>
-                  <input id="pBuscar" type="search" placeholder="ID (U…) o alias" autocomplete="off" spellcheck="false">
+                  <input id="pBuscar" type="search" aria-keyshortcuts="/" title="Atajo de teclado: /" placeholder="ID (U…) o alias" autocomplete="off" spellcheck="false">
                 </label>
                 <label class="field">
                   <span class="field-label">Plataforma</span>
@@ -289,6 +291,15 @@
                     <option value="">Artistas y no artistas</option>
                     <option value="1">Solo artistas</option>
                     <option value="0">Sin ser artistas</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="field-label">Estatus</span>
+                  <select id="pEstatus">
+                    <option value="">Todos los estatus</option>
+                    <option value="activo">Activo</option>
+                    <option value="en_riesgo">En riesgo</option>
+                    <option value="inactivo">Inactivo</option>
                   </select>
                 </label>
                 <label class="field field--narrow">
@@ -306,7 +317,7 @@
                   <caption class="sr-only">Padrón de miembros consolidado en D1. La ubicación solo se muestra con consentimiento.</caption>
                   <thead>
                     <tr>
-                      <th scope="col">ID</th><th scope="col">Alias</th><th scope="col">Plataforma</th><th scope="col">Interés</th><th scope="col">Artista</th><th scope="col">Estatus</th><th scope="col">Mensajes 30 d</th><th scope="col">Última actividad</th><th scope="col">Ubicación</th>
+                      <th scope="col" aria-sort="none"><button class="th-sort" type="button" data-tabla="padron" data-campo="id_usuario">ID</button></th><th scope="col" aria-sort="none"><button class="th-sort" type="button" data-tabla="padron" data-campo="alias">Alias</button></th><th scope="col">Plataforma</th><th scope="col">Interés</th><th scope="col">Artista</th><th scope="col">Estatus</th><th scope="col" aria-sort="none"><button class="th-sort" type="button" data-tabla="padron" data-campo="mensajes_30d">Mensajes 30 d</button></th><th scope="col" aria-sort="none"><button class="th-sort" type="button" data-tabla="padron" data-campo="ultima_actividad">Última actividad</button></th><th scope="col">Ubicación</th>
                     </tr>
                   </thead>
                   <tbody id="tablaPadron">
@@ -347,7 +358,7 @@
                   <caption class="sr-only">Interacciones rechazadas por el ETL y el motivo del rechazo.</caption>
                   <thead>
                     <tr>
-                      <th scope="col">Folio</th><th scope="col">Usuario de origen</th><th scope="col">Fecha de origen</th><th scope="col">Canal</th><th scope="col">Tipo</th><th scope="col">Tema</th><th scope="col">Motivo de rechazo</th>
+                      <th scope="col" aria-sort="none"><button class="th-sort" type="button" data-tabla="cuar" data-campo="id_interaccion">Folio</button></th><th scope="col" aria-sort="none"><button class="th-sort" type="button" data-tabla="cuar" data-campo="id_usuario_origen">Usuario de origen</button></th><th scope="col" aria-sort="none"><button class="th-sort" type="button" data-tabla="cuar" data-campo="timestamp_origen">Fecha de origen</button></th><th scope="col">Canal</th><th scope="col">Tipo</th><th scope="col">Tema</th><th scope="col">Motivo de rechazo</th>
                     </tr>
                   </thead>
                   <tbody id="tablaCuarentena">
@@ -373,6 +384,10 @@
     <div class="modal-inner">
       <div class="modal-head">
         <h3 id="detalleTitulo">Detalle de la interacción</h3>
+        <div class="modal-nav">
+          <button id="detalleAnterior" class="btn btn-secondary" type="button" aria-label="Interacción anterior" aria-keyshortcuts="ArrowLeft">← Anterior</button>
+          <button id="detalleSiguiente" class="btn btn-secondary" type="button" aria-label="Interacción siguiente" aria-keyshortcuts="ArrowRight">Siguiente →</button>
+        </div>
         <button id="detalleCerrar" class="icon-btn" type="button" aria-label="Cerrar detalle" title="Cerrar">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>
         </button>
@@ -384,6 +399,6 @@
   <!-- Avisos flotantes de altas, ediciones y borrados recibidos por WebSocket (app.js: mostrarToast). -->
   <div class="toast-stack" id="toastStack" role="status" aria-live="polite" aria-atomic="false"></div>
 
-  <script src="/static/app.js?v=20261126b"></script>
+  <script src="/static/app.js?v=20261126c"></script>
 </body>
 </html>
